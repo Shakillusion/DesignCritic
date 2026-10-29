@@ -104,7 +104,8 @@ async function launch(): Promise<Browser> {
   const browser = await chromium.launch({
     executablePath,
     headless: true,
-    args: ["--font-render-hinting=none", "--disable-lcd-text", "--hide-scrollbars", "--mute-audio", "--no-first-run"],
+    // Containers usually lack the user namespaces Chromium's sandbox needs; the Docker image opts out explicitly.
+    args: ["--font-render-hinting=none", "--disable-lcd-text", "--hide-scrollbars", "--mute-audio", "--no-first-run", ...(env.browserNoSandbox ? ["--no-sandbox"] : [])],
   });
   browser.on("disconnected", () => {
     g.__dcBrowser = null;

@@ -1,15 +1,22 @@
 "use client";
 
-import { FolderKanban, Images, LayoutGrid, Menu, Moon, PenTool, ScanSearch, Settings, Sun, Telescope, Wand2, X, Palette } from "lucide-react";
+import { FolderKanban, Images, LayoutGrid, LogOut, Menu, Moon, PenTool, ScanSearch, Settings, Sun, Telescope, Wand2, X, Palette } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { cx } from "@/components/ui";
-import { useFetch } from "@/hooks/use-api";
+import { api, useFetch } from "@/hooks/use-api";
 
 interface Status {
   ai: { configured: boolean; activeLabel: string | null; activeFree: boolean };
+  auth: { enabled: boolean };
 }
+
+const signOut = async () => {
+  await api("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- full reload drops all client state after sign-out
+  window.location.assign("/login");
+};
 
 const NAV: { group: string; items: { href: string; label: string; icon: typeof LayoutGrid; soon?: boolean }[] }[] = [
   {
@@ -138,6 +145,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           <button onClick={toggle} aria-label="Toggle dark mode" title="Toggle dark mode" className="flex size-9 items-center justify-center rounded-[10px] text-muted hover:bg-surface-2 hover:text-ink">
             {theme === "dark" ? <Sun className="size-[17px]" /> : <Moon className="size-[17px]" />}
           </button>
+          {status?.auth.enabled && (
+            <button onClick={signOut} aria-label="Sign out" title="Sign out" className="flex size-9 items-center justify-center rounded-[10px] text-muted hover:bg-surface-2 hover:text-ink">
+              <LogOut className="size-[17px]" />
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -149,6 +161,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   // Full-bleed workspaces manage their own padding.
   const fullBleed = /^\/(critiques|designs)\//.test(pathname);
+  // The sign-in screen stands alone (and can't load the sidebar's status before sign-in).
+  if (pathname === "/login") return children;
 
   return (
     <div className="flex min-h-dvh">

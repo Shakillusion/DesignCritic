@@ -33,6 +33,9 @@ export const env = {
   get browserPath() {
     return process.env.DESIGNCRITIC_BROWSER_PATH?.trim() || null;
   },
+  get browserNoSandbox() {
+    return process.env.DESIGNCRITIC_BROWSER_NO_SANDBOX === "1";
+  },
   get maxUploadBytes() {
     const mb = Number(process.env.DESIGNCRITIC_MAX_UPLOAD_MB || 20);
     return (Number.isFinite(mb) && mb > 0 ? mb : 20) * 1024 * 1024;

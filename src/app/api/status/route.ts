@@ -4,6 +4,7 @@ import { handle, json, requireUser } from "@/lib/http";
 import { providerStatus } from "@/lib/integrations/assets";
 import { findBrowserExecutable } from "@/lib/design-engine/renderer";
 import { env } from "@/lib/env";
+import { accessPassword } from "@/lib/auth/session";
 import { DEFAULT_FEEDS } from "@/lib/integrations/research/feeds";
 
 /** Integration status for the UI. Reports presence of configuration only — never key values. */
@@ -34,6 +35,7 @@ export const GET = handle(async () => {
       providers: Object.values(PROVIDERS).map((p) => ({ id: p.id, label: p.label, free: p.free, configured: p.isConfigured(), keyEnv: p.keyEnv, signupUrl: p.signupUrl, maxImages: p.maxImages, supportsPdf: p.supportsPdf })),
     },
     renderer,
+    auth: { enabled: Boolean(accessPassword()) },
     assetProviders: providerStatus(),
     researchSources: [
       { id: "feeds", label: "Design publication feeds", configured: true, detail: `${(prefs.researchFeeds.length || DEFAULT_FEEDS.length)} feeds (free, no key)` },

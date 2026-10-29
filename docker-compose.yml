@@ -1,0 +1,31 @@
+# App + Caddy (automatic HTTPS). Settings come from ./.env on the server (never committed).
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - designcritic-data:/data
+    shm_size: 1gb # Chromium needs more shared memory than Docker's 64 MB default
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  designcritic-data:
+  caddy-data:
+  caddy-config:

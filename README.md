@@ -66,6 +66,10 @@ Open http://localhost:3000. Data lives in `designcritic-ai/data/` (SQLite databa
 | `npm run lint` | ESLint |
 | `npm test` | Vitest: unit, API-route and real-renderer integration tests |
 
+## Deploying
+
+The app can be hosted for free on an Oracle Cloud Always Free VM using Docker and Caddy, with automatic HTTPS and a password gate. For step-by-step instructions, see [docs/DEPLOY.md](docs/DEPLOY.md). Set `DESIGNCRITIC_PASSWORD` on any public server. Leave it unset locally and the app stays open.
+
 ## Architecture (short)
 
 - **Next.js 16 (App Router) + React 19 + TypeScript + Tailwind 4.** UI components are client components that call JSON route handlers under `src/app/api`.
