@@ -1,0 +1,186 @@
+@import "tailwindcss";
+
+/* ── Soft studio palette: light-first, warm neutrals, one violet accent ── */
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --surface-2: #f4f1ec;
+  --surface-3: #ece8e1;
+  --line: #e7e1d8;
+  --line-strong: #d8d0c4;
+  --ink: #1a1816;
+  --ink-2: #3a3632;
+  --muted: #6e6862;
+  --subtle: #9a938b;
+  --accent: #6d5bf6;
+  --accent-hover: #5c49ec;
+  --accent-ink: #ffffff;
+  --accent-soft: #efecfe;
+  --accent-line: #d9d3fd;
+  --canvas: #f0ede7;
+  --critical: #c2362d;
+  --critical-soft: #fbeceb;
+  --major: #c77414;
+  --major-soft: #fcf1e3;
+  --minor: #3566c4;
+  --minor-soft: #e9effb;
+  --success: #23835a;
+  --success-soft: #e5f4ec;
+  --shadow-sm: 0 1px 2px rgb(26 24 22 / 0.04), 0 1px 1px rgb(26 24 22 / 0.03);
+  --shadow-md: 0 8px 24px -8px rgb(26 24 22 / 0.12), 0 2px 6px rgb(26 24 22 / 0.05);
+  --shadow-lg: 0 24px 64px -16px rgb(26 24 22 / 0.22), 0 4px 12px rgb(26 24 22 / 0.06);
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #141312;
+  --surface: #1c1b19;
+  --surface-2: #232220;
+  --surface-3: #2c2a27;
+  --line: #2f2d2a;
+  --line-strong: #3d3a36;
+  --ink: #f3f0eb;
+  --ink-2: #d9d4cd;
+  --muted: #a39d95;
+  --subtle: #78726b;
+  --accent: #8b7dff;
+  --accent-hover: #9d91ff;
+  --accent-ink: #13111f;
+  --accent-soft: #252140;
+  --accent-line: #3b3470;
+  --canvas: #0f0e0d;
+  --critical: #f0766c;
+  --critical-soft: #3a1f1c;
+  --major: #eda24c;
+  --major-soft: #3a2a17;
+  --minor: #7fa6f0;
+  --minor-soft: #1d2840;
+  --success: #5ccc96;
+  --success-soft: #173126;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 8px 24px -8px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 24px 64px -16px rgb(0 0 0 / 0.6);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-canvas: var(--canvas);
+  --color-critical: var(--critical);
+  --color-critical-soft: var(--critical-soft);
+  --color-major: var(--major);
+  --color-major-soft: var(--major-soft);
+  --color-minor: var(--minor);
+  --color-minor-soft: var(--minor-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01", "ss03";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Display type: Inter at its display optical size. */
+.font-display {
+  font-variation-settings: "opsz" 32;
+  letter-spacing: -0.025em;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Quiet scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* Checkerboard behind artwork so transparency and edges read clearly. */
+.canvas-grid {
+  background-color: var(--canvas);
+  background-image: radial-gradient(circle at 1px 1px, color-mix(in oklab, var(--ink) 9%, transparent) 1px, transparent 0);
+  background-size: 18px 18px;
+}
+
+@keyframes dc-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-in {
+  animation: dc-fade-up 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes dc-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade {
+  animation: dc-fade 0.2s ease-out both;
+}
+
+@keyframes dc-shimmer {
+  from {
+    background-position: -400px 0;
+  }
+  to {
+    background-position: 400px 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 50%, var(--surface-2) 100%);
+  background-size: 800px 100%;
+  animation: dc-shimmer 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-in,
+  .animate-fade,
+  .skeleton {
+    animation: none;
+  }
+}
