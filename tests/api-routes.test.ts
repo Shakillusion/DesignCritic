@@ -23,8 +23,8 @@ const req = (url: string, init?: { method?: string; json?: unknown }) =>
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- route contexts are typed per route
 const ctx = (params: Record<string, string>): any => ({ params: Promise.resolve(params) });
 
-beforeAll(() => {
-  useTestDb();
+beforeAll(async () => {
+  await useTestDb();
 });
 
 describe("API routes", () => {
@@ -83,10 +83,10 @@ describe("API routes", () => {
     const res = await critiques.POST(req("/api/critiques", { method: "POST", json: { projectId, fileId, context: { purpose: "Sell tickets" } } }));
     expect(res.status).toBe(202);
     const { critique: c, job } = await res.json();
-    let j = getJob("local-user", job.id);
+    let j = await getJob("local-user", job.id);
     for (let i = 0; i < 100 && (j.status === "queued" || j.status === "running"); i++) {
       await new Promise((r) => setTimeout(r, 50));
-      j = getJob("local-user", job.id);
+      j = await getJob("local-user", job.id);
     }
     expect(j.status).toBe("failed");
     expect(j.error).toMatch(/GEMINI_API_KEY/);
@@ -112,7 +112,7 @@ describe("API routes", () => {
       productionNotes: [],
     });
     const { result, overall } = finalizeCritique(raw, { hasBrand: true });
-    updateCritique("local-user", c.id, { status: "succeeded", result, overallScore: overall, decisions: { f1: "pending" } });
+    await updateCritique("local-user", c.id, { status: "succeeded", result, overallScore: overall, decisions: { f1: "pending" } });
 
     const patched = await critique.PATCH(req(`/api/critiques/${c.id}`, { method: "PATCH", json: { decisions: { f1: "accepted", bogus: "accepted" } } }), ctx({ id: c.id }));
     expect((await patched.json()).critique.decisions).toEqual({ f1: "accepted" });

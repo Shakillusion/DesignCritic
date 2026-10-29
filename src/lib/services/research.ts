@@ -34,10 +34,10 @@ async function fetchThumb(url: string) {
   return res.buffer;
 }
 
-export function startResearch(userId: string, input: { projectId: string } & ResearchQuery) {
-  const project = getProject(userId, input.projectId);
+export async function startResearch(userId: string, input: { projectId: string } & ResearchQuery) {
+  const project = await getProject(userId, input.projectId);
   const query: ResearchQuery = { topic: input.topic, industry: input.industry, direction: input.direction };
-  return startJob(
+  return await startJob(
     userId,
     {
       type: "research",
@@ -48,7 +48,7 @@ export function startResearch(userId: string, input: { projectId: string } & Res
       ],
     },
     async (ctx) => {
-      const prefs = getPreferences(userId);
+      const prefs = await getPreferences(userId);
       const feeds = prefs.researchFeeds.length ? prefs.researchFeeds.map((url) => ({ url, name: DEFAULT_FEEDS.find((f) => f.url === url)?.name ?? new URL(url).hostname.replace(/^www\./, "") })) : DEFAULT_FEEDS;
       const { items, errors } = await ctx.step("gather", async (detail) => {
         const visualQuery = [query.topic, query.direction].filter(Boolean).join(" ").slice(0, 120);
@@ -73,7 +73,7 @@ export function startResearch(userId: string, input: { projectId: string } & Res
 
       const brief = await ctx.step("analyze", async (detail) => {
         // Show the model a few images (within the provider's per-request limit) so visual claims are grounded.
-        const visuals = items.filter((i) => i.imageUrl && i.kind === "visual").slice(0, Math.max(0, Math.min(6, engineLimits(userId).maxImages)));
+        const visuals = items.filter((i) => i.imageUrl && i.kind === "visual").slice(0, Math.max(0, Math.min(6, (await engineLimits(userId)).maxImages)));
         const thumbs = (
           await Promise.all(
             visuals.map(async (v) => {
@@ -90,7 +90,7 @@ export function startResearch(userId: string, input: { projectId: string } & Res
         detail(`${b.insights.length} cited insight(s)${b.uncited?.length ? ` · ${b.uncited.length} uncited note(s) labelled` : ""}`);
         return b;
       });
-      const run = saveResearchRun(userId, { projectId: project.id, query, items, brief, sourceErrors: errors });
+      const run = await saveResearchRun(userId, { projectId: project.id, query, items, brief, sourceErrors: errors });
       return { runId: run.id };
     },
   );
@@ -98,10 +98,10 @@ export function startResearch(userId: string, input: { projectId: string } & Res
 
 /** Save a retrieved item (or a pasted link) to the project's references, with a local preview and palette. */
 export async function saveReference(userId: string, input: { projectId: string; runId?: string; itemId?: string; url?: string }) {
-  getProject(userId, input.projectId);
+  await getProject(userId, input.projectId);
   let item: Omit<ResearchItem, "id">;
   if (input.runId && input.itemId) {
-    const run = getResearchRun(userId, input.runId);
+    const run = await getResearchRun(userId, input.runId);
     if (run.projectId !== input.projectId) throw new HttpError(400, "That research belongs to another project.");
     const found = run.items.find((i) => i.id === input.itemId);
     if (!found) throw new HttpError(404, "That item isn't in this research run.");
@@ -141,16 +141,16 @@ export async function saveReference(userId: string, input: { projectId: string; 
       logger.warn("reference.preview_failed", { url: item.imageUrl, error: String(err) });
     }
   }
-  return insertReference(userId, { projectId: input.projectId, kind: item.kind, source: item.source, title: item.title, url: item.url, publishedAt: item.publishedAt, creator: item.creator, summary: item.summary, rights: item.rights, fileId, palette, researchRunId: input.runId ?? null });
+  return await insertReference(userId, { projectId: input.projectId, kind: item.kind, source: item.source, title: item.title, url: item.url, publishedAt: item.publishedAt, creator: item.creator, summary: item.summary, rights: item.rights, fileId, palette, researchRunId: input.runId ?? null });
 }
 
-export function startDirections(userId: string, input: { moodboardId: string; brief: string; count: number }) {
-  const board = getMoodboard(userId, input.moodboardId);
+export async function startDirections(userId: string, input: { moodboardId: string; brief: string; count: number }) {
+  const board = await getMoodboard(userId, input.moodboardId);
   if (board.items.length < 2) throw new HttpError(400, "Add at least two references to the moodboard first.");
-  const project = getProject(userId, board.projectId);
-  return startJob(userId, { type: "directions", projectId: project.id, steps: [{ key: "directions", label: "Creative Director proposing original directions" }] }, async (ctx) => {
+  const project = await getProject(userId, board.projectId);
+  return await startJob(userId, { type: "directions", projectId: project.id, steps: [{ key: "directions", label: "Creative Director proposing original directions" }] }, async (ctx) => {
     const records = await ctx.step("directions", async (detail) => {
-      const maxImages = Math.min(8, engineLimits(userId).maxImages);
+      const maxImages = Math.min(8, (await engineLimits(userId)).maxImages);
       const refs = await Promise.all(
         board.items.map(async (it, idx) => {
           let image = null;
@@ -166,7 +166,7 @@ export function startDirections(userId: string, input: { moodboardId: string; br
           return { id: it.ref.id, title: it.ref.title, source: it.ref.source, note: it.note || it.ref.notes, palette: it.ref.palette, image };
         }),
       );
-      const dirs = await proposeDirections({ userId, brief: input.brief || project.description, boardNotes: board.notes, refs, brandRules: brandRulesText(project.brandId ? getBrand(userId, project.brandId) : null), count: input.count });
+      const dirs = await proposeDirections({ userId, brief: input.brief || project.description, boardNotes: board.notes, refs, brandRules: brandRulesText(project.brandId ? await getBrand(userId, project.brandId) : null), count: input.count });
       detail(dirs.map((d) => d.name).join(" · "));
       return saveDirections(userId, { projectId: project.id, moodboardId: board.id, directions: dirs });
     });

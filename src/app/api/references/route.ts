@@ -7,7 +7,7 @@ import { IdParam } from "@/lib/validation/api";
 
 export const GET = handle(async (req: NextRequest) => {
   const user = await requireUser();
-  return json({ references: listReferences(user.id, IdParam.parse(req.nextUrl.searchParams.get("projectId"))) });
+  return json({ references: await listReferences(user.id, IdParam.parse(req.nextUrl.searchParams.get("projectId"))) });
 });
 
 const Body = z.object({

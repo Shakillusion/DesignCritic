@@ -74,39 +74,39 @@ describe("article ranking", () => {
 
 describe("references and moodboards", () => {
   const U = "local-user";
-  beforeEach(() => useTestDb());
-  const ref = (projectId: string, url: string, fileId: string | null = null) =>
-    insertReference(U, { projectId, kind: "visual", source: "The Met", title: "Poster", url, publishedAt: null, creator: null, summary: "", rights: "Public domain", fileId, palette: ["#112233"], researchRunId: null });
+  beforeEach(async () => await useTestDb());
+  const ref = async (projectId: string, url: string, fileId: string | null = null) =>
+    await insertReference(U, { projectId, kind: "visual", source: "The Met", title: "Poster", url, publishedAt: null, creator: null, summary: "", rights: "Public domain", fileId, palette: ["#112233"], researchRunId: null });
 
-  it("de-duplicates by URL per project and keeps boards ordered", () => {
-    const p = createProject(U, { name: "P" });
-    const a = ref(p.id, "https://met/1");
-    expect(ref(p.id, "https://met/1").id).toBe(a.id);
-    const b = ref(p.id, "https://met/2");
-    const board = createMoodboard(U, { projectId: p.id, name: "Board", refIds: [a.id, b.id] });
+  it("de-duplicates by URL per project and keeps boards ordered", async () => {
+    const p = await createProject(U, { name: "P" });
+    const a = await ref(p.id, "https://met/1");
+    expect((await ref(p.id, "https://met/1")).id).toBe(a.id);
+    const b = await ref(p.id, "https://met/2");
+    const board = await createMoodboard(U, { projectId: p.id, name: "Board", refIds: [a.id, b.id] });
     expect(board.items.map((i) => i.ref.id)).toEqual([a.id, b.id]);
-    const saved = saveMoodboard(U, board.id, { notes: "calm", items: [{ refId: b.id, size: "l", note: "hero" }, { refId: a.id, size: "s", note: "" }] });
+    const saved = await saveMoodboard(U, board.id, { notes: "calm", items: [{ refId: b.id, size: "l", note: "hero" }, { refId: a.id, size: "s", note: "" }] });
     expect(saved.items.map((i) => [i.ref.id, i.size, i.note])).toEqual([[b.id, "l", "hero"], [a.id, "s", ""]]);
-    expect(getMoodboard(U, board.id).notes).toBe("calm");
+    expect((await getMoodboard(U, board.id)).notes).toBe("calm");
   });
 
-  it("refuses references from another project on a board", () => {
-    const p1 = createProject(U, { name: "P1" });
-    const p2 = createProject(U, { name: "P2" });
-    const foreign = ref(p2.id, "https://x/1");
-    expect(() => createMoodboard(U, { projectId: p1.id, name: "B", refIds: [foreign.id] })).toThrow(/another project/);
+  it("refuses references from another project on a board", async () => {
+    const p1 = await createProject(U, { name: "P1" });
+    const p2 = await createProject(U, { name: "P2" });
+    const foreign = await ref(p2.id, "https://x/1");
+    await expect(createMoodboard(U, { projectId: p1.id, name: "B", refIds: [foreign.id] })).rejects.toThrow(/another project/);
   });
 
-  it("deleting a project removes research, references (and their preview files) and boards", () => {
-    const p = createProject(U, { name: "P" });
-    const f = insertFile(U, { projectId: p.id, kind: "reference", originalName: "r.webp", mime: "image/webp", size: 1, storagePath: "x/r.webp", sha256: "s" });
-    const r = ref(p.id, "https://met/9", f.id);
-    createMoodboard(U, { projectId: p.id, name: "B", refIds: [r.id] });
-    saveResearchRun(U, { projectId: p.id, query: { topic: "t", industry: "", direction: "" }, items: [], brief: null, sourceErrors: [] });
-    const paths = deleteProject(U, p.id);
+  it("deleting a project removes research, references (and their preview files) and boards", async () => {
+    const p = await createProject(U, { name: "P" });
+    const f = await insertFile(U, { projectId: p.id, kind: "reference", originalName: "r.webp", mime: "image/webp", size: 1, storagePath: "x/r.webp", sha256: "s" });
+    const r = await ref(p.id, "https://met/9", f.id);
+    await createMoodboard(U, { projectId: p.id, name: "B", refIds: [r.id] });
+    await saveResearchRun(U, { projectId: p.id, query: { topic: "t", industry: "", direction: "" }, items: [], brief: null, sourceErrors: [] });
+    const paths = await deleteProject(U, p.id);
     expect(paths).toContain("x/r.webp");
-    const p2 = createProject(U, { name: "P2" });
-    expect(listReferences(U, p2.id)).toEqual([]);
-    expect(listResearchRuns(U, p2.id)).toEqual([]);
+    const p2 = await createProject(U, { name: "P2" });
+    expect(await listReferences(U, p2.id)).toEqual([]);
+    expect(await listResearchRuns(U, p2.id)).toEqual([]);
   });
 });

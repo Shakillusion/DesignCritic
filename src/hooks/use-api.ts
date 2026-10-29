@@ -30,10 +30,40 @@ export async function api<T>(url: string, init?: RequestInit & { json?: unknown 
 }
 
 export async function uploadFile<T = unknown>(file: File, fields: Record<string, string>): Promise<T> {
-  const form = new FormData();
-  form.append("file", file);
-  for (const [k, v] of Object.entries(fields)) form.append(k, v);
-  return api<T>("/api/uploads", { method: "POST", body: form });
+  const send = (f: File) => {
+    const form = new FormData();
+    form.append("file", f);
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
+    return api<T>("/api/uploads", { method: "POST", body: form });
+  };
+  try {
+    return await send(file);
+  } catch (err) {
+    // Hosted servers cap request size (about 4 MB on Vercel). Retry a large photo re-encoded to fit.
+    if (!(err instanceof ApiError && err.status === 413) || !["image/png", "image/jpeg", "image/webp"].includes(file.type)) throw err;
+    const smaller = await shrinkImage(file, 3.8 * 1024 * 1024);
+    if (!smaller) throw err;
+    return send(smaller);
+  }
+}
+
+/** Re-encode an image as WebP, stepping the size down until it fits under maxBytes. */
+async function shrinkImage(file: File, maxBytes: number): Promise<File | null> {
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) return null;
+  try {
+    for (const scale of [1, 0.85, 0.7, 0.55, 0.4]) {
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const out = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.9));
+      if (out && out.size <= maxBytes) return new File([out], file.name.replace(/\.\w+$/, "") + ".webp", { type: "image/webp" });
+    }
+    return null;
+  } finally {
+    bitmap.close();
+  }
 }
 
 export function useFetch<T>(url: string | null) {

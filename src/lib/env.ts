@@ -25,7 +25,23 @@ export const env = {
     return process.env.PEXELS_API_KEY?.trim() || null;
   },
   get dataDir() {
-    return path.resolve(process.cwd(), process.env.DESIGNCRITIC_DATA_DIR?.trim() || "./data");
+    // Runtime data, not source: keep the bundler from tracing the whole project through this path.
+    return path.resolve(/*turbopackIgnore: true*/ process.cwd(), process.env.DESIGNCRITIC_DATA_DIR?.trim() || "./data");
+  },
+  /** Hosted database (Turso). Unset locally: a SQLite file in dataDir is used. */
+  get databaseUrl() {
+    return process.env.TURSO_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim() || null;
+  },
+  get databaseAuthToken() {
+    return process.env.TURSO_AUTH_TOKEN?.trim() || null;
+  },
+  /** Vercel Blob file storage. Unset locally: files go under dataDir/storage. */
+  get blobToken() {
+    return process.env.BLOB_READ_WRITE_TOKEN?.trim() || null;
+  },
+  /** Running on Vercel serverless functions. */
+  get onVercel() {
+    return process.env.VERCEL === "1";
   },
   get contact() {
     return process.env.DESIGNCRITIC_CONTACT?.trim() || "designcritic-local";
@@ -37,8 +53,10 @@ export const env = {
     return process.env.DESIGNCRITIC_BROWSER_NO_SANDBOX === "1";
   },
   get maxUploadBytes() {
-    const mb = Number(process.env.DESIGNCRITIC_MAX_UPLOAD_MB || 20);
-    return (Number.isFinite(mb) && mb > 0 ? mb : 20) * 1024 * 1024;
+    // Vercel functions reject request bodies over 4.5 MB, so the hosted default stays under it.
+    const fallback = this.onVercel ? 4 : 20;
+    const mb = Number(process.env.DESIGNCRITIC_MAX_UPLOAD_MB || fallback);
+    return (Number.isFinite(mb) && mb > 0 ? mb : fallback) * 1024 * 1024;
   },
 };
 

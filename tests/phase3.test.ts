@@ -121,21 +121,21 @@ describe("rebuild", () => {
 });
 
 describe("assistant chat store", () => {
-  beforeEach(() => useTestDb());
-  it("keeps conversations per project and design, oldest first", () => {
-    const p = createProject("local-user", { name: "P" });
-    addChatMessage("local-user", { projectId: p.id, designId: null, role: "user", content: "project-level" });
-    addChatMessage("local-user", { projectId: p.id, designId: "dsn_aaaaaaaaaaaaaaaa", role: "user", content: "about design A" });
-    addChatMessage("local-user", { projectId: p.id, designId: "dsn_bbbbbbbbbbbbbbbb", role: "user", content: "about design B" });
-    const a = listChatMessages("local-user", p.id, "dsn_aaaaaaaaaaaaaaaa");
+  beforeEach(async () => await useTestDb());
+  it("keeps conversations per project and design, oldest first", async () => {
+    const p = await createProject("local-user", { name: "P" });
+    await addChatMessage("local-user", { projectId: p.id, designId: null, role: "user", content: "project-level" });
+    await addChatMessage("local-user", { projectId: p.id, designId: "dsn_aaaaaaaaaaaaaaaa", role: "user", content: "about design A" });
+    await addChatMessage("local-user", { projectId: p.id, designId: "dsn_bbbbbbbbbbbbbbbb", role: "user", content: "about design B" });
+    const a = await listChatMessages("local-user", p.id, "dsn_aaaaaaaaaaaaaaaa");
     expect(a.map((m) => m.content)).toEqual(["project-level", "about design A"]);
-    expect(() => listChatMessages("someone-else", p.id, null)).toThrow();
+    await expect(listChatMessages("someone-else", p.id, null)).rejects.toThrow();
   });
 });
 
 describe("assistant action whitelist", () => {
-  beforeEach(() => {
-    useTestDb();
+  beforeEach(async () => {
+    await useTestDb();
     process.env.GEMINI_API_KEY = "g";
   });
   it("downgrades actions that aren't available to 'none'", async () => {

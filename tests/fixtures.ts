@@ -1,10 +1,14 @@
+import path from "node:path";
 import sharp from "sharp";
 import { openDatabase, setDbForTesting } from "@/lib/database/db";
 
-/** Fresh in-memory database for the current test file. */
-export function useTestDb() {
-  const db = openDatabase(":memory:");
+let dbCount = 0;
+/** Fresh database file (in the per-file temp data dir) for the current test. */
+export async function useTestDb() {
+  const file = path.join(process.env.DESIGNCRITIC_DATA_DIR!, `test-${++dbCount}-${Date.now()}.sqlite`);
+  const db = openDatabase(`file:${file}`);
   setDbForTesting(db);
+  await db.ready;
   return db;
 }
 

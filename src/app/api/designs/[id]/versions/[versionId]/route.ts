@@ -17,20 +17,20 @@ export const POST = handle(async (req: NextRequest, ctx: RouteContext<"/api/desi
   const params = await ctx.params;
   const designId = IdParam.parse(params.id);
   // "current" resolves to the design's current version (used by the Improve hub).
-  const versionId = params.versionId === "current" ? (getDesign(user.id, designId).currentVersionId ?? "") : IdParam.parse(params.versionId);
+  const versionId = params.versionId === "current" ? ((await getDesign(user.id, designId)).currentVersionId ?? "") : IdParam.parse(params.versionId);
   if (!versionId) throw new HttpError(409, "This design has no versions yet.");
-  const v = getVersion(user.id, versionId);
+  const v = await getVersion(user.id, versionId);
   if (v.designId !== designId) throw new HttpError(404, "Design version not found");
   const body = await parseBody(req, Action);
   switch (body.action) {
     case "approve":
-      return json({ version: updateVersionMeta(user.id, versionId, { approved: body.approved }) });
+      return json({ version: await updateVersionMeta(user.id, versionId, { approved: body.approved }) });
     case "restore":
       return json({ version: await restoreVersion(user.id, designId, versionId) }, { status: 201 });
     case "view":
-      setCurrentVersion(user.id, designId, versionId);
+      await setCurrentVersion(user.id, designId, versionId);
       return json({ ok: true });
     case "critique":
-      return json({ job: startDesignCritique(user.id, designId, versionId) }, { status: 202 });
+      return json({ job: await startDesignCritique(user.id, designId, versionId) }, { status: 202 });
   }
 });

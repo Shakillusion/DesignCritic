@@ -75,23 +75,23 @@ const toRun = (r: Row): ResearchRun => ({
   createdAt: String(r.created_at),
 });
 
-export function saveResearchRun(userId: string, input: { projectId: string; query: ResearchQuery; items: ResearchItem[]; brief: TrendBrief | null; sourceErrors: SourceError[] }): ResearchRun {
-  getProject(userId, input.projectId);
+export async function saveResearchRun(userId: string, input: { projectId: string; query: ResearchQuery; items: ResearchItem[]; brief: TrendBrief | null; sourceErrors: SourceError[] }): Promise<ResearchRun> {
+  await getProject(userId, input.projectId);
   const id = newId("rsr");
-  getDb()
+  await getDb()
     .prepare("INSERT INTO research_runs (id, user_id, project_id, query, items, brief, source_errors, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
     .run(id, userId, input.projectId, JSON.stringify(input.query), JSON.stringify(input.items), input.brief ? JSON.stringify(input.brief) : null, JSON.stringify(input.sourceErrors), now());
-  return getResearchRun(userId, id);
+  return await getResearchRun(userId, id);
 }
 
-export function getResearchRun(userId: string, id: string): ResearchRun {
-  const r = getDb().prepare("SELECT * FROM research_runs WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
+export async function getResearchRun(userId: string, id: string): Promise<ResearchRun> {
+  const r = await getDb().prepare("SELECT * FROM research_runs WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
   if (!r) throw new NotFoundError("Research run");
   return toRun(r);
 }
 
-export function listResearchRuns(userId: string, projectId: string): ResearchRun[] {
-  return (getDb().prepare("SELECT * FROM research_runs WHERE user_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 20").all(userId, projectId) as Row[]).map(toRun);
+export async function listResearchRuns(userId: string, projectId: string): Promise<ResearchRun[]> {
+  return (await getDb().prepare("SELECT * FROM research_runs WHERE user_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 20").all(userId, projectId) as Row[]).map(toRun);
 }
 
 const toRef = (r: Row): Reference => ({
@@ -112,114 +112,117 @@ const toRef = (r: Row): Reference => ({
   createdAt: String(r.created_at),
 });
 
-export function insertReference(userId: string, input: Omit<Reference, "id" | "createdAt" | "notes"> & { notes?: string }): Reference {
-  getProject(userId, input.projectId);
-  const existing = getDb().prepare("SELECT * FROM refs WHERE user_id = ? AND project_id = ? AND url = ?").get(userId, input.projectId, input.url) as Row | undefined;
+export async function insertReference(userId: string, input: Omit<Reference, "id" | "createdAt" | "notes"> & { notes?: string }): Promise<Reference> {
+  await getProject(userId, input.projectId);
+  const existing = await getDb().prepare("SELECT * FROM refs WHERE user_id = ? AND project_id = ? AND url = ?").get(userId, input.projectId, input.url) as Row | undefined;
   if (existing) return toRef(existing);
   const id = newId("ref");
-  getDb()
+  await getDb()
     .prepare(
       `INSERT INTO refs (id, user_id, project_id, kind, source, title, url, published_at, creator, summary, rights, file_id, palette, notes, research_run_id, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(id, userId, input.projectId, input.kind, input.source, input.title, input.url, input.publishedAt, input.creator, input.summary, input.rights, input.fileId, JSON.stringify(input.palette), input.notes ?? "", input.researchRunId, now());
-  return getReference(userId, id);
+  return await getReference(userId, id);
 }
 
-export function getReference(userId: string, id: string): Reference {
-  const r = getDb().prepare("SELECT * FROM refs WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
+export async function getReference(userId: string, id: string): Promise<Reference> {
+  const r = await getDb().prepare("SELECT * FROM refs WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
   if (!r) throw new NotFoundError("Reference");
   return toRef(r);
 }
 
-export function listReferences(userId: string, projectId: string): Reference[] {
-  return (getDb().prepare("SELECT * FROM refs WHERE user_id = ? AND project_id = ? ORDER BY created_at DESC").all(userId, projectId) as Row[]).map(toRef);
+export async function listReferences(userId: string, projectId: string): Promise<Reference[]> {
+  return (await getDb().prepare("SELECT * FROM refs WHERE user_id = ? AND project_id = ? ORDER BY created_at DESC").all(userId, projectId) as Row[]).map(toRef);
 }
 
-export function updateReferenceNotes(userId: string, id: string, notes: string): Reference {
-  getReference(userId, id);
-  getDb().prepare("UPDATE refs SET notes = ? WHERE id = ? AND user_id = ?").run(notes, id, userId);
-  return getReference(userId, id);
+export async function updateReferenceNotes(userId: string, id: string, notes: string): Promise<Reference> {
+  await getReference(userId, id);
+  await getDb().prepare("UPDATE refs SET notes = ? WHERE id = ? AND user_id = ?").run(notes, id, userId);
+  return await getReference(userId, id);
 }
 
 /** Deletes a reference; returns its thumbnail file id (caller removes the file). */
-export function deleteReference(userId: string, id: string): string | null {
-  const ref = getReference(userId, id);
-  getDb().prepare("DELETE FROM refs WHERE id = ? AND user_id = ?").run(id, userId);
+export async function deleteReference(userId: string, id: string): Promise<string | null> {
+  const ref = await getReference(userId, id);
+  await getDb().prepare("DELETE FROM refs WHERE id = ? AND user_id = ?").run(id, userId);
   return ref.fileId;
 }
 
 /* ── Moodboards ── */
 
-export function createMoodboard(userId: string, input: { projectId: string; name: string; refIds?: string[] }): Moodboard {
-  getProject(userId, input.projectId);
+export async function createMoodboard(userId: string, input: { projectId: string; name: string; refIds?: string[] }): Promise<Moodboard> {
+  await getProject(userId, input.projectId);
   const id = newId("mbd");
   const t = now();
-  transaction(() => {
-    getDb().prepare("INSERT INTO moodboards (id, user_id, project_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)").run(id, userId, input.projectId, input.name, t, t);
-    (input.refIds ?? []).forEach((refId, i) => {
-      const ref = getReference(userId, refId);
+  await transaction(async () => {
+    await getDb().prepare("INSERT INTO moodboards (id, user_id, project_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)").run(id, userId, input.projectId, input.name, t, t);
+    for (const [i, refId] of (input.refIds ?? []).entries()) {
+      const ref = await getReference(userId, refId);
       if (ref.projectId !== input.projectId) throw new ConflictError("A reference belongs to another project.");
-      getDb().prepare("INSERT OR IGNORE INTO moodboard_items (moodboard_id, ref_id, position) VALUES (?, ?, ?)").run(id, refId, i);
-    });
+      await getDb().prepare("INSERT OR IGNORE INTO moodboard_items (moodboard_id, ref_id, position) VALUES (?, ?, ?)").run(id, refId, i);
+    }
   });
-  return getMoodboard(userId, id);
+  return await getMoodboard(userId, id);
 }
 
-export function getMoodboard(userId: string, id: string): Moodboard {
-  const r = getDb().prepare("SELECT * FROM moodboards WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
+export async function getMoodboard(userId: string, id: string): Promise<Moodboard> {
+  const r = await getDb().prepare("SELECT * FROM moodboards WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
   if (!r) throw new NotFoundError("Moodboard");
-  const items = (getDb()
+  const items = (await getDb()
     .prepare("SELECT i.position, i.size, i.note, f.* FROM moodboard_items i JOIN refs f ON f.id = i.ref_id WHERE i.moodboard_id = ? ORDER BY i.position")
     .all(id) as Row[]).map((x) => ({ ref: toRef(x), position: Number(x.position), size: String(x.size) as "s" | "m" | "l", note: String(x.note ?? "") }));
   return { id: String(r.id), projectId: String(r.project_id), name: String(r.name), notes: String(r.notes ?? ""), createdAt: String(r.created_at), updatedAt: String(r.updated_at), items };
 }
 
-export function listMoodboards(userId: string, projectId: string): Moodboard[] {
-  return (getDb().prepare("SELECT id FROM moodboards WHERE user_id = ? AND project_id = ? ORDER BY updated_at DESC").all(userId, projectId) as Row[]).map((r) => getMoodboard(userId, String(r.id)));
+export async function listMoodboards(userId: string, projectId: string): Promise<Moodboard[]> {
+  const rows = (await getDb().prepare("SELECT id FROM moodboards WHERE user_id = ? AND project_id = ? ORDER BY updated_at DESC").all(userId, projectId) as Row[]);
+  return Promise.all(rows.map((r) => getMoodboard(userId, String(r.id))));
 }
 
 /** Replace the board's name/notes and its ordered items in one go (the UI saves the whole board). */
-export function saveMoodboard(userId: string, id: string, input: { name?: string; notes?: string; items?: { refId: string; size: "s" | "m" | "l"; note: string }[] }): Moodboard {
-  const board = getMoodboard(userId, id);
-  transaction(() => {
-    getDb().prepare("UPDATE moodboards SET name = ?, notes = ?, updated_at = ? WHERE id = ?").run(input.name ?? board.name, input.notes ?? board.notes, now(), id);
+export async function saveMoodboard(userId: string, id: string, input: { name?: string; notes?: string; items?: { refId: string; size: "s" | "m" | "l"; note: string }[] }): Promise<Moodboard> {
+  const board = await getMoodboard(userId, id);
+  await transaction(async () => {
+    await getDb().prepare("UPDATE moodboards SET name = ?, notes = ?, updated_at = ? WHERE id = ?").run(input.name ?? board.name, input.notes ?? board.notes, now(), id);
     if (input.items) {
-      getDb().prepare("DELETE FROM moodboard_items WHERE moodboard_id = ?").run(id);
-      input.items.forEach((it, i) => {
-        const ref = getReference(userId, it.refId);
+      await getDb().prepare("DELETE FROM moodboard_items WHERE moodboard_id = ?").run(id);
+      for (const [i, it] of input.items.entries()) {
+        const ref = await getReference(userId, it.refId);
         if (ref.projectId !== board.projectId) throw new ConflictError("A reference belongs to another project.");
-        getDb().prepare("INSERT INTO moodboard_items (moodboard_id, ref_id, position, size, note) VALUES (?, ?, ?, ?, ?)").run(id, it.refId, i, it.size, it.note);
-      });
+        await getDb().prepare("INSERT INTO moodboard_items (moodboard_id, ref_id, position, size, note) VALUES (?, ?, ?, ?, ?)").run(id, it.refId, i, it.size, it.note);
+      }
     }
   });
-  return getMoodboard(userId, id);
+  return await getMoodboard(userId, id);
 }
 
-export function deleteMoodboard(userId: string, id: string) {
-  getMoodboard(userId, id);
-  getDb().prepare("DELETE FROM moodboards WHERE id = ? AND user_id = ?").run(id, userId);
+export async function deleteMoodboard(userId: string, id: string) {
+  await getMoodboard(userId, id);
+  await getDb().prepare("DELETE FROM moodboards WHERE id = ? AND user_id = ?").run(id, userId);
 }
 
 /* ── Directions ── */
 
-export function saveDirections(userId: string, input: { projectId: string; moodboardId: string | null; directions: ArtDirection[] }): DirectionRecord[] {
-  return input.directions.map((d) => {
+export async function saveDirections(userId: string, input: { projectId: string; moodboardId: string | null; directions: ArtDirection[] }): Promise<DirectionRecord[]> {
+  const out: DirectionRecord[] = [];
+  for (const d of input.directions) {
     const id = newId("dir");
-    getDb().prepare("INSERT INTO directions (id, user_id, project_id, moodboard_id, data, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(id, userId, input.projectId, input.moodboardId, JSON.stringify(d), now());
-    return getDirection(userId, id);
-  });
+    await getDb().prepare("INSERT INTO directions (id, user_id, project_id, moodboard_id, data, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(id, userId, input.projectId, input.moodboardId, JSON.stringify(d), now());
+    out.push(await getDirection(userId, id));
+  }
+  return out;
 }
 
-export function getDirection(userId: string, id: string): DirectionRecord {
-  const r = getDb().prepare("SELECT * FROM directions WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
+export async function getDirection(userId: string, id: string): Promise<DirectionRecord> {
+  const r = await getDb().prepare("SELECT * FROM directions WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
   if (!r) throw new NotFoundError("Direction");
   return { id: String(r.id), projectId: String(r.project_id), moodboardId: str(r.moodboard_id), data: json(r.data, null as unknown as ArtDirection), createdAt: String(r.created_at) };
 }
 
-export function listDirections(userId: string, projectId: string, moodboardId?: string): DirectionRecord[] {
+export async function listDirections(userId: string, projectId: string, moodboardId?: string): Promise<DirectionRecord[]> {
   const rows = moodboardId
-    ? (getDb().prepare("SELECT id FROM directions WHERE user_id = ? AND project_id = ? AND moodboard_id = ? ORDER BY created_at DESC").all(userId, projectId, moodboardId) as Row[])
-    : (getDb().prepare("SELECT id FROM directions WHERE user_id = ? AND project_id = ? ORDER BY created_at DESC").all(userId, projectId) as Row[]);
-  return rows.map((r) => getDirection(userId, String(r.id)));
+    ? (await getDb().prepare("SELECT id FROM directions WHERE user_id = ? AND project_id = ? AND moodboard_id = ? ORDER BY created_at DESC").all(userId, projectId, moodboardId) as Row[])
+    : (await getDb().prepare("SELECT id FROM directions WHERE user_id = ? AND project_id = ? ORDER BY created_at DESC").all(userId, projectId) as Row[]);
+  return Promise.all(rows.map((r) => getDirection(userId, String(r.id))));
 }

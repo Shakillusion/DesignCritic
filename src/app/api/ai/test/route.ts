@@ -20,7 +20,7 @@ export const POST = handle(async (req: Request) => {
   const p = PROVIDERS[id];
   if (!p.isConfigured()) return json({ ok: false, error: `${p.keyEnv} isn't set in .env.local.` });
   const started = Date.now();
-  const preferred = getPreferences(user.id).aiModels[id] ?? "auto";
+  const preferred = (await getPreferences(user.id)).aiModels[id] ?? "auto";
   const models = p.candidateModels ? await p.candidateModels(preferred).catch(() => [] as string[]) : [];
   if (!models.length) models.push(await p.resolveModel(preferred).catch(() => "auto"));
   const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#E0201B" } }).png().toBuffer();

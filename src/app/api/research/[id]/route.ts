@@ -5,5 +5,5 @@ import { IdParam } from "@/lib/validation/api";
 
 export const GET = handle(async (_req: NextRequest, ctx: RouteContext<"/api/research/[id]">) => {
   const user = await requireUser();
-  return json({ run: getResearchRun(user.id, IdParam.parse((await ctx.params).id)) });
+  return json({ run: await getResearchRun(user.id, IdParam.parse((await ctx.params).id)) });
 });

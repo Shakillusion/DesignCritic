@@ -14,14 +14,14 @@ import { startApplyFixes, startInstructionEdit } from "./improve";
 
 /** One chat turn: store the user's message, ask the assistant, run its (whitelisted) action, store the reply. */
 export async function handleChatMessage(userId: string, input: { projectId: string; designId: string | null; message: string }): Promise<{ user: ChatMessage; assistant: ChatMessage }> {
-  const project = getProject(userId, input.projectId);
-  const design = input.designId ? getDesign(userId, input.designId) : null;
+  const project = await getProject(userId, input.projectId);
+  const design = input.designId ? await getDesign(userId, input.designId) : null;
   if (design && design.projectId !== project.id) throw new Error("That design belongs to another project.");
-  const history = listChatMessages(userId, project.id, design?.id ?? null, 16).map((m) => ({ role: m.role, content: m.content }));
-  const userMsg = addChatMessage(userId, { projectId: project.id, designId: design?.id ?? null, role: "user", content: input.message });
+  const history = (await listChatMessages(userId, project.id, design?.id ?? null, 16)).map((m) => ({ role: m.role, content: m.content }));
+  const userMsg = await addChatMessage(userId, { projectId: project.id, designId: design?.id ?? null, role: "user", content: input.message });
 
-  const version = design?.currentVersionId ? getVersion(userId, design.currentVersionId) : null;
-  const critique = version?.critiqueId ? getCritique(userId, version.critiqueId) : null;
+  const version = design?.currentVersionId ? await getVersion(userId, design.currentVersionId) : null;
+  const critique = version?.critiqueId ? await getCritique(userId, version.critiqueId) : null;
   let render: { base64: string; mediaType: "image/png" | "image/jpeg" } | null = null;
   if (version?.renderFileId) {
     const { buffer } = await readFile(userId, version.renderFileId);
@@ -37,15 +37,15 @@ export async function handleChatMessage(userId: string, input: { projectId: stri
     context: {
       projectName: project.name,
       projectDescription: project.description,
-      brandRules: brandRulesText(project.brandId ? getBrand(userId, project.brandId) : null),
+      brandRules: brandRulesText(project.brandId ? await getBrand(userId, project.brandId) : null),
       design: design && version ? { name: design.name, versionNumber: version.number, layers: describeDocument(version.document), render } : null,
       critique: critique?.result
         ? { score: critique.overallScore, summary: critique.result.summary, findings: critique.result.findings.map((f) => `- ${f.id} [${f.severity}, ${critique.decisions[f.id] ?? "pending"}] ${f.title}`) }
         : null,
       history,
       allowedActions: allowed,
-      research: (() => {
-        const run = listResearchRuns(userId, project.id)[0];
+      research: await (async () => {
+        const run = (await listResearchRuns(userId, project.id))[0];
         if (!run?.brief) return null;
         const byId = new Map(run.items.map((i) => [i.id, i]));
         const insights = run.brief.insights.map((i) => `- [${i.category}] ${i.title} — sources: ${i.citations.map((c) => byId.get(c)?.url).filter(Boolean).join(", ")}`);
@@ -58,16 +58,16 @@ export async function handleChatMessage(userId: string, input: { projectId: stri
   try {
     const a = turn.action;
     if (a.type === "edit" && design && version) {
-      const job = startInstructionEdit(userId, { designId: design.id, versionId: version.id, instruction: a.instruction! });
+      const job = await startInstructionEdit(userId, { designId: design.id, versionId: version.id, instruction: a.instruction! });
       action = { type: "edit", jobId: job.id, detail: a.instruction! };
     } else if (a.type === "critique" && design && version) {
-      action = { type: "critique", jobId: startDesignCritique(userId, design.id, version.id).id };
+      action = { type: "critique", jobId: (await startDesignCritique(userId, design.id, version.id)).id };
     } else if (a.type === "apply_fixes" && critique) {
-      action = { type: "apply_fixes", jobId: startApplyFixes(userId, critique.id).id };
+      action = { type: "apply_fixes", jobId: (await startApplyFixes(userId, critique.id)).id };
     } else if (a.type === "variations" && design && version) {
       const brief = design.brief as { request?: string; preset?: string };
       const preset = brief.preset && FORMAT_PRESETS[brief.preset] ? brief.preset : "custom";
-      const job = startGenerateDesign(userId, {
+      const job = await startGenerateDesign(userId, {
         projectId: project.id,
         brief: `${brief.request ?? design.name}. Direction for these variations: ${a.instruction ?? "explore distinctly different layouts"}`,
         preset,
@@ -84,6 +84,6 @@ export async function handleChatMessage(userId: string, input: { projectId: stri
     logger.warn("assistant.action_failed", { error: String(err) });
     action = { type: turn.action.type, status: "failed", detail: err instanceof Error ? err.message : String(err) };
   }
-  const assistant = addChatMessage(userId, { projectId: project.id, designId: design?.id ?? null, role: "assistant", content: turn.reply, action });
+  const assistant = await addChatMessage(userId, { projectId: project.id, designId: design?.id ?? null, role: "assistant", content: turn.reply, action });
   return { user: userMsg, assistant };
 }

@@ -33,8 +33,8 @@ export const POST = handle(async (req: Request) => {
   const rule = RULES[purpose];
   const projectId = rule.scope === "project" ? IdParam.parse(form.get("projectId")) : null;
   const brandId = rule.scope === "brand" ? IdParam.parse(form.get("brandId")) : null;
-  if (projectId) getProject(user.id, projectId);
-  const brand = brandId ? getBrand(user.id, brandId) : null;
+  if (projectId) await getProject(user.id, projectId);
+  const brand = brandId ? await getBrand(user.id, brandId) : null;
 
   const validated = await validateUpload(Buffer.from(await file.arrayBuffer()), { allow: rule.allow, maxBytes: env.maxUploadBytes });
   const originalName = file.name.replace(/[^\w.\- ()]/g, "_").slice(0, 160) || "upload";
@@ -50,13 +50,13 @@ export const POST = handle(async (req: Request) => {
 
   if (brand) {
     const key = purpose === "brand-logo" ? "logoFileIds" : purpose === "brand-reference" ? "referenceFileIds" : "guidelineFileIds";
-    updateBrand(user.id, brand.id, { [key]: [...brand[key], stored.id] }, `Added ${purpose.replace("brand-", "")} file “${originalName}”`);
+    await updateBrand(user.id, brand.id, { [key]: [...brand[key], stored.id] }, `Added ${purpose.replace("brand-", "")} file “${originalName}”`);
   }
 
   let asset = null;
   if (purpose === "asset" && projectId) {
     const profile = validated.mime === "image/svg+xml" ? null : await colorProfile(validated.buffer).catch(() => null);
-    asset = insertAsset(user.id, {
+    asset = await insertAsset(user.id, {
       projectId,
       fileId: stored.id,
       type: validated.mime === "image/svg+xml" ? "vector" : "photo",

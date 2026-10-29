@@ -7,17 +7,17 @@ import { IdParam } from "@/lib/validation/api";
 
 export const GET = handle(async (_req: NextRequest, ctx: RouteContext<"/api/designs/[id]">) => {
   const user = await requireUser();
-  const design = getDesign(user.id, IdParam.parse((await ctx.params).id));
-  const project = getProject(user.id, design.projectId);
-  const versions = listVersions(user.id, design.id);
+  const design = await getDesign(user.id, IdParam.parse((await ctx.params).id));
+  const project = await getProject(user.id, design.projectId);
+  const versions = await listVersions(user.id, design.id);
   const versionIds = new Set(versions.map((v) => v.id));
   return json({
     design,
     project,
-    brand: project.brandId ? getBrand(user.id, project.brandId) : null,
+    brand: project.brandId ? await getBrand(user.id, project.brandId) : null,
     versions,
-    assets: listAssets(user.id, { projectId: project.id }),
-    critiques: listCritiques(user.id, project.id)
+    assets: await listAssets(user.id, { projectId: project.id }),
+    critiques: (await listCritiques(user.id, project.id))
       .filter((c) => c.designVersionId && versionIds.has(c.designVersionId))
       .map(({ result, ...c }) => ({ ...c, findingCount: result?.findings.length ?? 0 })),
   });
@@ -26,11 +26,11 @@ export const GET = handle(async (_req: NextRequest, ctx: RouteContext<"/api/desi
 export const PATCH = handle(async (req: NextRequest, ctx: RouteContext<"/api/designs/[id]">) => {
   const user = await requireUser();
   const { name } = await parseBody(req, z.object({ name: z.string().trim().min(1).max(160) }));
-  return json({ design: renameDesign(user.id, IdParam.parse((await ctx.params).id), name) });
+  return json({ design: await renameDesign(user.id, IdParam.parse((await ctx.params).id), name) });
 });
 
 export const DELETE = handle(async (_req: NextRequest, ctx: RouteContext<"/api/designs/[id]">) => {
   const user = await requireUser();
-  await removeStoredPaths(deleteDesign(user.id, IdParam.parse((await ctx.params).id)));
+  await removeStoredPaths(await deleteDesign(user.id, IdParam.parse((await ctx.params).id)));
   return json({ deleted: true });
 });

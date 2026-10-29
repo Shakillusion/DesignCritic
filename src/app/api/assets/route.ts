@@ -8,7 +8,7 @@ export const GET = handle(async (req: NextRequest) => {
   const sp = req.nextUrl.searchParams;
   const projectId = sp.get("projectId");
   return json({
-    assets: listAssets(user.id, {
+    assets: await listAssets(user.id, {
       projectId: projectId ? IdParam.parse(projectId) : undefined,
       type: sp.get("type") || undefined,
       status: sp.get("status") || undefined,

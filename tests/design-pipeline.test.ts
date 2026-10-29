@@ -22,11 +22,11 @@ describe.skipIf(!browser)("design pipeline (real renderer)", () => {
   let assetId = "";
 
   beforeAll(async () => {
-    useTestDb();
-    const p = createProject(U, { name: "Switzerland" });
+    await useTestDb();
+    const p = await createProject(U, { name: "Switzerland" });
     const photo = await landscapeJpeg(2400, 1600);
     const f = await saveFile(U, photo, { projectId: p.id, kind: "asset-original", originalName: "alps.jpg", mime: "image/jpeg", width: 2400, height: 1600 });
-    assetId = insertAsset(U, { projectId: p.id, fileId: f.id, type: "photo", source: "upload", provider: null, providerId: null, title: "Alps", creator: null, creatorUrl: null, sourceUrl: null, license: { code: "user-provided", name: "Provided by you", url: null, commercialUse: null, modificationAllowed: null, attributionRequired: false, shareAlike: false, notes: null }, attribution: null, status: "approved", locked: false, analysis: {}, retrievedAt: null }).id;
+    assetId = (await insertAsset(U, { projectId: p.id, fileId: f.id, type: "photo", source: "upload", provider: null, providerId: null, title: "Alps", creator: null, creatorUrl: null, sourceUrl: null, license: { code: "user-provided", name: "Provided by you", url: null, commercialUse: null, modificationAllowed: null, attributionRequired: false, shareAlike: false, notes: null }, attribution: null, status: "approved", locked: false, analysis: {}, retrievedAt: null })).id;
     const doc: DesignDocument = {
       schemaVersion: 1,
       name: "Switzerland poster",
@@ -39,9 +39,9 @@ describe.skipIf(!browser)("design pipeline (real renderer)", () => {
       ],
       metadata: { concept: "Quiet grandeur", rationale: "Calm sky for type", fontsUsed: ["Inter"] },
     };
-    const d = createDesign(U, { projectId: p.id, name: "Switzerland poster", brief: {} });
+    const d = await createDesign(U, { projectId: p.id, name: "Switzerland poster", brief: {} });
     designId = d.id;
-    v1 = addDesignVersion(U, d.id, { document: doc, changeSummary: "Generated", createdBy: "agent", assetIds: [assetId] }).id;
+    v1 = (await addDesignVersion(U, d.id, { document: doc, changeSummary: "Generated", createdBy: "agent", assetIds: [assetId] })).id;
   });
 
   afterAll(async () => {
@@ -49,18 +49,18 @@ describe.skipIf(!browser)("design pipeline (real renderer)", () => {
   });
 
   it("saves an edit as a new rendered, QA-checked version that uses the asset", async () => {
-    const base = listVersions(U, designId).find((v) => v.id === v1)!;
+    const base = (await listVersions(U, designId)).find((v) => v.id === v1)!;
     const edited = { ...base.document, layers: base.document.layers.map((l) => (l.id === "headline" && l.type === "text" ? { ...l, text: "Switzerland\nawaits", height: 200 } : l)) };
     const v2 = await saveUserVersion(U, designId, { document: edited, changeSummary: "Two-line headline", baseVersionId: v1 });
     expect(v2.number).toBe(2);
     expect(v2.renderFileId).toBeTruthy();
     expect(v2.qa?.checksRun.length).toBeGreaterThan(3);
     expect(v2.qa?.issues.find((i) => i.check === "missing-asset")).toBeUndefined();
-    expect(getAsset(U, assetId).usageCount).toBe(2);
+    expect((await getAsset(U, assetId)).usageCount).toBe(2);
   });
 
   it("refuses to change a locked layer", async () => {
-    const base = listVersions(U, designId).find((v) => v.id === v1)!;
+    const base = (await listVersions(U, designId)).find((v) => v.id === v1)!;
     const tampered = { ...base.document, layers: base.document.layers.map((l) => (l.id === "photo" ? { ...l, x: 40 } : l)) };
     await expect(saveUserVersion(U, designId, { document: tampered, changeSummary: "Move photo", baseVersionId: v1 })).rejects.toThrow(/locked/);
     const removed = { ...base.document, layers: base.document.layers.filter((l) => l.id !== "photo") };
@@ -71,7 +71,7 @@ describe.skipIf(!browser)("design pipeline (real renderer)", () => {
     const v = await restoreVersion(U, designId, v1);
     expect(v.number).toBe(3);
     expect(v.changeSummary).toBe("Restored version 1");
-    expect(listVersions(U, designId)).toHaveLength(3);
+    expect(await listVersions(U, designId)).toHaveLength(3);
   });
 
   it("exports PNG at exact size, @2x, JPG, PDF and standalone HTML", async () => {

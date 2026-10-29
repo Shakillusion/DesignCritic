@@ -4,11 +4,11 @@ import { PreferencesUpdate } from "@/lib/validation/api";
 
 export const GET = handle(async () => {
   const user = await requireUser();
-  return json({ preferences: getPreferences(user.id), usage: usageSummary(user.id) });
+  return json({ preferences: await getPreferences(user.id), usage: await usageSummary(user.id) });
 });
 
 export const PATCH = handle(async (req: Request) => {
   const user = await requireUser();
   const patch = await parseBody(req, PreferencesUpdate);
-  return json({ preferences: setPreferences(user.id, patch) });
+  return json({ preferences: await setPreferences(user.id, patch) });
 });

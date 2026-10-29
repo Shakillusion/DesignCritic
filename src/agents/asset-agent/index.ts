@@ -121,7 +121,7 @@ export async function sourceAsset(opts: {
 
   // Compare as many candidates as the AI provider accepts in one request (Groq: 3).
   const fitScore = (c: AssetCandidate) => Math.min(coverage(c), 2) * (0.6 + 0.4 * aspectFit(c, targetRatio));
-  const shortlist = [...sized].sort((a, b) => fitScore(b) - fitScore(a)).slice(0, Math.min(6, engineLimits(opts.userId).maxImages));
+  const shortlist = [...sized].sort((a, b) => fitScore(b) - fitScore(a)).slice(0, Math.min(6, (await engineLimits(opts.userId)).maxImages));
   log(`Comparing ${shortlist.length} licensed candidates`);
 
   // Thumbnails for visual judgement (fetched server-side through the SSRF-safe client).
@@ -205,7 +205,7 @@ export function wikimediaRendition(c: AssetCandidate, artboard?: { width: number
 export async function importCandidate(opts: { userId: string; projectId: string; candidate: AssetCandidate; artboard?: { width: number; height: number }; maxEdge?: number; analysis?: Asset["analysis"]; log?: (m: string) => void }): Promise<Asset> {
   const chosen = opts.candidate;
   const log = opts.log ?? (() => {});
-  const existing = findAssetByProviderId(opts.userId, opts.projectId, chosen.provider, chosen.providerId);
+  const existing = await findAssetByProviderId(opts.userId, opts.projectId, chosen.provider, chosen.providerId);
   if (existing) return existing;
   if (licenseVerdict(chosen.license) === "blocked") throw new AssetSearchError(`“${chosen.title}” is licensed ${chosen.license.name}, which doesn't allow this use.`);
 
@@ -256,7 +256,7 @@ export async function importCandidate(opts: { userId: string; projectId: string;
     profile = await colorProfile(prepared.buffer);
   }
 
-  return insertAsset(opts.userId, {
+  return await insertAsset(opts.userId, {
     projectId: opts.projectId,
     fileId: original.id,
     preparedFileId,
@@ -310,5 +310,5 @@ export async function analyzeOwnAsset(opts: { userId: string; asset: Asset; imag
       description: z.string(),
     }),
   });
-  return updateAsset(opts.userId, opts.asset.id, { analysis: { ...opts.asset.analysis, ...r } });
+  return await updateAsset(opts.userId, opts.asset.id, { analysis: { ...opts.asset.analysis, ...r } });
 }

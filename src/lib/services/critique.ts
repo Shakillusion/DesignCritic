@@ -15,15 +15,15 @@ export async function startCritique(
   userId: string,
   input: { projectId: string; fileId: string; title?: string; context: CritiqueContext; designVersionId?: string | null; qa?: QaReport | null },
 ) {
-  const project = getProject(userId, input.projectId);
+  const project = await getProject(userId, input.projectId);
   const { file, buffer } = await readFile(userId, input.fileId);
   if (file.projectId !== project.id) throw new HttpError(400, "That file belongs to a different project.");
   if (!file.mime.startsWith("image/")) throw new HttpError(400, "Only images can be critiqued.");
 
-  const prefs = getPreferences(userId);
-  const model = engineLabel(userId);
+  const prefs = await getPreferences(userId);
+  const model = await engineLabel(userId);
   const technical = await technicalFacts(buffer);
-  const critique = createCritique(userId, {
+  const critique = await createCritique(userId, {
     projectId: project.id,
     fileId: file.id,
     brandId: project.brandId,
@@ -34,7 +34,7 @@ export async function startCritique(
     technical,
   });
 
-  const job = startJob(
+  const job = await startJob(
     userId,
     {
       type: input.designVersionId ? "design-critique" : "critique",
@@ -46,14 +46,14 @@ export async function startCritique(
       ],
     },
     async (ctx) => {
-      updateCritique(userId, critique.id, { status: "running" });
+      await updateCritique(userId, critique.id, { status: "running" });
       try {
         const image = await ctx.step("prepare", async (detail) => {
           const img = await prepareForVision(buffer);
           detail(`${technical.width}×${technical.height} ${technical.format.toUpperCase()}`);
           return img;
         });
-        const brand = withBrandStrictness(project.brandId ? getBrand(userId, project.brandId) : null, prefs.brandStrictness);
+        const brand = withBrandStrictness(project.brandId ? await getBrand(userId, project.brandId) : null, prefs.brandStrictness);
         const { result, overall } = await ctx.step("critique", async (detail) => {
           detail(`${model}${brand ? ` · brand: ${brand.name}` : ""}`);
           return critiqueImage({
@@ -64,11 +64,11 @@ export async function startCritique(
             brand,
             strictness: prefs.critiqueStrictness,
             qa: input.qa,
-            onMeta: (m) => updateCritique(userId, critique.id, { model: `${m.provider}/${m.model}` }),
+            onMeta: (m) => void updateCritique(userId, critique.id, { model: `${m.provider}/${m.model}` }),
           });
         });
         await ctx.step("save", async () => {
-          updateCritique(userId, critique.id, {
+          await updateCritique(userId, critique.id, {
             status: "succeeded",
             result,
             overallScore: overall,
@@ -78,7 +78,7 @@ export async function startCritique(
         });
         return { critiqueId: critique.id, overall };
       } catch (err) {
-        updateCritique(userId, critique.id, { status: "failed", error: err instanceof Error ? err.message : String(err), completedAt: new Date().toISOString() });
+        await updateCritique(userId, critique.id, { status: "failed", error: err instanceof Error ? err.message : String(err), completedAt: new Date().toISOString() });
         throw err;
       }
     },
@@ -87,14 +87,14 @@ export async function startCritique(
 }
 
 /** Build an improvement plan from the findings the user accepted (or all non-rejected ones). */
-export function startImprovementPlan(userId: string, critiqueId: string) {
-  const critique = getCritique(userId, critiqueId);
+export async function startImprovementPlan(userId: string, critiqueId: string) {
+  const critique = await getCritique(userId, critiqueId);
   if (critique.status !== "succeeded" || !critique.result) throw new HttpError(409, "The critique hasn't finished yet.");
   const result = critique.result;
   const accepted = result.findings.filter((f) => critique.decisions[f.id] === "accepted");
   const findings = accepted.length ? accepted : result.findings.filter((f) => critique.decisions[f.id] !== "rejected");
   if (!findings.length) throw new HttpError(400, "Accept at least one finding (or leave some unrejected) to build a plan.");
-  return startJob(
+  return await startJob(
     userId,
     { type: "improvement-plan", projectId: critique.projectId, steps: [{ key: "plan", label: "Creative Director drafting the correction plan" }] },
     async (ctx) => {
@@ -103,7 +103,7 @@ export function startImprovementPlan(userId: string, critiqueId: string) {
         const image = await prepareForVision(buffer);
         return planImprovements({ userId, image, critique: result, findings, editable: Boolean(critique.designVersionId) });
       });
-      updateCritique(userId, critique.id, { improvementPlan: plan });
+      await updateCritique(userId, critique.id, { improvementPlan: plan });
       return { critiqueId: critique.id };
     },
   );

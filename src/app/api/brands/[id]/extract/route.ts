@@ -14,12 +14,12 @@ const Body = z.object({ fileIds: z.array(IdParam).max(6).default([]), text: z.st
 /** Proposes brand rules from guideline files/text. The result is a proposal the user reviews; nothing is saved here. */
 export const POST = handle(async (req: NextRequest, ctx: RouteContext<"/api/brands/[id]/extract">) => {
   const user = await requireUser();
-  const brand = getBrand(user.id, IdParam.parse((await ctx.params).id));
+  const brand = await getBrand(user.id, IdParam.parse((await ctx.params).id));
   const body = await parseBody(req, Body);
   if (!body.fileIds.length && !body.text?.trim()) throw new HttpError(400, "Choose a guideline file or paste written guidelines.");
   const files = await Promise.all(body.fileIds.map((f) => readFile(user.id, f)));
   if (files.some((f) => f.file.brandId !== brand.id)) throw new HttpError(400, "A file doesn't belong to this brand.");
-  const limits = engineLimits(user.id);
+  const limits = await engineLimits(user.id);
   if (files.some((f) => f.file.mime === "application/pdf") && !limits.supportsPdf) {
     throw new HttpError(400, "The selected AI provider can't read PDFs. Switch to Gemini in Settings, upload the pages as images, or paste the text.");
   }
@@ -27,7 +27,7 @@ export const POST = handle(async (req: NextRequest, ctx: RouteContext<"/api/bran
     throw new HttpError(400, `The selected AI provider accepts at most ${limits.maxImages} images per request. Select fewer files.`);
   }
 
-  const job = startJob(
+  const job = await startJob(
     user.id,
     { type: "brand-extract", projectId: null, steps: [{ key: "extract", label: "Brand Guardian reading the guidelines" }] },
     async (c) => {

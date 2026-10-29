@@ -20,8 +20,8 @@ const geminiAnswer = (text: string, finishReason = "STOP") => ({ candidates: [{ 
 const groqModels = { data: [{ id: "qwen/qwen3.8-27b", active: true }, { id: "whisper-large-v9", active: true }] };
 const chatAnswer = (text: string) => ({ model: "qwen/qwen3.8-27b", choices: [{ finish_reason: "stop", message: { content: text } }], usage: { prompt_tokens: 50, completion_tokens: 20 } });
 
-beforeEach(() => {
-  useTestDb();
+beforeEach(async () => {
+  await useTestDb();
   calls.length = 0;
   process.env.GEMINI_API_KEY = "g-test";
   delete process.env.GROQ_API_KEY;
@@ -50,7 +50,7 @@ describe("structuredCall (free providers)", () => {
     expect(cfg.responseJsonSchema).toMatchObject({ type: "object", required: ["verdict", "score"] });
     const parts = (gen.body!.contents as { parts: Record<string, unknown>[] }[])[0].parts;
     expect(parts[0]).toEqual({ inline_data: { mime_type: "image/png", data: "AAAA" } });
-    const u = usageSummary(U);
+    const u = await usageSummary(U);
     expect(u.calls).toBe(1);
     expect(u.costUsd).toBe(0);
     expect(u.recent[0].model).toBe("gemini/gemini-3.8-flash");
@@ -81,10 +81,10 @@ describe("structuredCall (free providers)", () => {
 
   it("does not fall back when the user turned fallback off, and never falls back to paid Claude", async () => {
     process.env.ANTHROPIC_API_KEY = "paid";
-    setPreferences(U, { aiFallback: false });
+    await setPreferences(U, { aiFallback: false });
     handler = (url) => (url.includes("/models?") ? { json: geminiModels } : { status: 429, json: { error: { message: "quota" } }, headers: { "retry-after": "0" } });
     await expect(call()).rejects.toMatchObject({ code: "rate-limit", provider: "gemini" });
-    setPreferences(U, { aiFallback: true });
+    await setPreferences(U, { aiFallback: true });
     await expect(call()).rejects.toMatchObject({ code: "rate-limit" });
     expect(calls.some((c) => c.url.includes("anthropic"))).toBe(false);
   });
@@ -106,20 +106,20 @@ describe("structuredCall (free providers)", () => {
       url.endsWith("/api/v1/models")
         ? { json: { data: [m("paid/vision-pro", "0.000002", ["text", "image"], ["structured_outputs"]), m("free/text-only:free", "0", ["text"]), m("nvidia/safety-vl:free", "0", ["text", "image"]), m("free/vision-plain:free", "0", ["text", "image"]), m("free/vision-structured:free", "0", ["text", "image"], ["response_format", "structured_outputs"])] } }
         : { json: { ...chatAnswer('{"verdict":"or","score":60}'), model: "free/vision-structured:free" } };
-    setPreferences(U, { aiProvider: "openrouter", aiModels: { ...getPreferences(U).aiModels, openrouter: "auto" } });
+    await setPreferences(U, { aiProvider: "openrouter", aiModels: { ...(await getPreferences(U)).aiModels, openrouter: "auto" } });
     await expect(call()).resolves.toEqual({ verdict: "or", score: 60 });
     const sent = calls.find((c) => c.url.endsWith("/chat/completions"))!;
     expect(sent.body!.model).toBe("free/vision-structured:free");
     expect((sent.body!.response_format as { type: string }).type).toBe("json_schema");
     // A paid model id that somehow got into preferences is resolved away, never called.
-    setPreferences(U, { aiModels: { ...getPreferences(U).aiModels, openrouter: "paid/vision-pro" } });
+    await setPreferences(U, { aiModels: { ...(await getPreferences(U)).aiModels, openrouter: "paid/vision-pro" } });
     calls.length = 0;
     await call();
     expect(calls.filter((c) => c.url.endsWith("/chat/completions")).every((c) => c.body!.model !== "paid/vision-pro")).toBe(true);
   });
 
-  it("keeps the default provider free", () => {
-    expect(getPreferences(U)).toMatchObject({ aiProvider: "gemini", aiFallback: true, aiModels: { gemini: "auto", groq: "auto", openrouter: "auto" } });
+  it("keeps the default provider free", async () => {
+    expect(await getPreferences(U)).toMatchObject({ aiProvider: "gemini", aiFallback: true, aiModels: { gemini: "auto", groq: "auto", openrouter: "auto" } });
   });
 });
 

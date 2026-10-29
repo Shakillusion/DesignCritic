@@ -6,7 +6,7 @@ An AI creative director that **critiques** existing designs, **creates** editabl
 
 ## Quick start
 
-Requirements: Node.js 24+ (uses the built-in `node:sqlite`), and Microsoft Edge or Google Chrome installed (used headlessly to render designs).
+Requirements: Node.js 22+, and Microsoft Edge or Google Chrome installed (used headlessly to render designs).
 
 ```bash
 cd designcritic-ai
@@ -68,7 +68,10 @@ Open http://localhost:3000. Data lives in `designcritic-ai/data/` (SQLite databa
 
 ## Deploying
 
-The app can be hosted for free on an Oracle Cloud Always Free VM using Docker and Caddy, with automatic HTTPS and a password gate. For step-by-step instructions, see [docs/DEPLOY.md](docs/DEPLOY.md). Set `DESIGNCRITIC_PASSWORD` on any public server. Leave it unset locally and the app stays open.
+- **Vercel (free, no card, always online):** Vercel Hobby, a Turso database and Vercel Blob storage. See [docs/DEPLOY-VERCEL.md](docs/DEPLOY-VERCEL.md).
+- **Any Docker host:** the included `Dockerfile` and Caddy setup. See [docs/DEPLOY.md](docs/DEPLOY.md) (written for an Oracle Cloud VM).
+
+Set `DESIGNCRITIC_PASSWORD` on any public server. Leave it unset locally and the app stays open.
 
 ## Architecture (short)
 
@@ -81,9 +84,9 @@ The app can be hosted for free on an Oracle Cloud Always Free VM using Docker an
 - **Design document** (`src/lib/design-engine/schema.ts`):
   - A validated JSON format: artboard, ordered text/image/shape layers and print metadata.
   - `render-html.ts` turns it into the same HTML used both by the live editor (sandboxed iframe) and by headless export (Playwright + system Edge/Chrome).
-- **Persistence:** SQLite via `node:sqlite` behind `src/lib/database/repo.ts`. Every query is scoped by user ID.
+- **Persistence:** SQLite through libSQL behind `src/lib/database/repo.ts`: a local file in development, a Turso database when `TURSO_DATABASE_URL` is set. Every query is scoped by user ID. Files go to `data/storage` locally, or to private Vercel Blob objects when `BLOB_READ_WRITE_TOKEN` is set.
   - `supabase/migrations/0001_init.sql` is the Postgres + RLS equivalent for deployment. It is written but not yet connected.
-- **Long operations** run as in-process background jobs (`src/lib/jobs.ts`) that the UI polls.
+- **Long operations** run as background jobs (`src/lib/jobs.ts`) whose progress is stored in the database and polled by the UI. On Vercel they continue after the response via `after()`, within a 280 s budget.
 
 More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

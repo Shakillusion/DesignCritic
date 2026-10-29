@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { handle, requireUser } from "@/lib/http";
-import { readFile } from "@/lib/storage/storage";
+import { readFile, streamFile } from "@/lib/storage/storage";
 import { thumbnail } from "@/lib/image-processing/image";
 import { IdParam } from "@/lib/validation/api";
 
@@ -11,24 +11,30 @@ import { IdParam } from "@/lib/validation/api";
 export const GET = handle(async (req: NextRequest, ctx: RouteContext<"/api/files/[id]">) => {
   const user = await requireUser();
   const id = IdParam.parse((await ctx.params).id);
-  const { file, buffer } = await readFile(user.id, id);
   const thumb = req.nextUrl.searchParams.get("thumb");
   const download = req.nextUrl.searchParams.get("download") === "1";
-  let body: Buffer = buffer;
-  let type = file.mime;
-  if (thumb && file.mime.startsWith("image/") && file.mime !== "image/gif") {
-    const edge = Math.min(1600, Math.max(64, Number(thumb) || 480));
-    body = await thumbnail(buffer, edge);
-    type = "image/webp";
+  let body: BodyInit;
+  let type: string;
+  let size: number;
+  let name: string;
+  if (thumb) {
+    const { file, buffer } = await readFile(user.id, id);
+    const resize = file.mime.startsWith("image/") && file.mime !== "image/gif";
+    const out = resize ? await thumbnail(buffer, Math.min(1600, Math.max(64, Number(thumb) || 480))) : buffer;
+    [body, type, size, name] = [new Uint8Array(out), resize ? "image/webp" : file.mime, out.length, file.originalName];
+  } else {
+    // Streamed, so full-size originals and exports aren't capped by serverless response limits.
+    const { file, stream } = await streamFile(user.id, id);
+    [body, type, size, name] = [stream, file.mime, file.size, file.originalName];
   }
-  return new Response(new Uint8Array(body), {
+  return new Response(body, {
     headers: {
       "Content-Type": type,
-      "Content-Length": String(body.length),
+      "Content-Length": String(size),
       "Cache-Control": "private, max-age=31536000, immutable",
       "X-Content-Type-Options": "nosniff",
       "Content-Security-Policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
-      "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${encodeURIComponent(file.originalName)}"`,
+      "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${encodeURIComponent(name)}"`,
     },
   });
 });

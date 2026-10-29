@@ -4,9 +4,9 @@ import { handle, json, requireUser } from "@/lib/http";
 /** Everything that can be improved: editable designs (with their latest critique) and critiqued uploads. */
 export const GET = handle(async () => {
   const user = await requireUser();
-  const critiques = listCritiques(user.id);
-  const designs = listDesigns(user.id).map((d) => {
-    const versions = listVersions(user.id, d.id);
+  const critiques = await listCritiques(user.id);
+  const designs = await Promise.all((await listDesigns(user.id)).map(async (d) => {
+    const versions = await listVersions(user.id, d.id);
     const current = versions.find((v) => v.id === d.currentVersionId) ?? versions[0];
     const c = current?.critiqueId ? critiques.find((x) => x.id === current.critiqueId) : undefined;
     return {
@@ -22,7 +22,7 @@ export const GET = handle(async () => {
         ? { id: c.id, status: c.status, score: c.overallScore, findings: c.result?.findings.length ?? 0, accepted: Object.values(c.decisions).filter((x) => x === "accepted").length }
         : null,
     };
-  });
+  }));
   // Latest critique per uploaded file (critiques of design renders are covered above).
   const seen = new Set<string>();
   const uploads = critiques

@@ -7,12 +7,12 @@ import { DesignGenerate, IdParam } from "@/lib/validation/api";
 export const GET = handle(async (req: NextRequest) => {
   const user = await requireUser();
   const projectId = req.nextUrl.searchParams.get("projectId");
-  return json({ designs: listDesigns(user.id, projectId ? IdParam.parse(projectId) : undefined) });
+  return json({ designs: await listDesigns(user.id, projectId ? IdParam.parse(projectId) : undefined) });
 });
 
 /** Start the Create pipeline. Returns a job to poll. */
 export const POST = handle(async (req: Request) => {
   const user = await requireUser();
   const body = await parseBody(req, DesignGenerate);
-  return json({ job: startGenerateDesign(user.id, body) }, { status: 202 });
+  return json({ job: await startGenerateDesign(user.id, body) }, { status: 202 });
 });

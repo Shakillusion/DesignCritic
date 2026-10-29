@@ -19,7 +19,7 @@ Agents          src/agents/*
   ▼
 Platform        src/lib/*
   ai/client.ts            the only Claude entry point (structured output, fallback, usage log)
-  database/{db,repo}.ts   node:sqlite; user-scoped queries; seam for a Supabase adapter
+  database/{db,repo}.ts   libSQL (local file or Turso); user-scoped async queries
   storage/storage.ts      immutable files under data/storage, path-confined
   design-engine/*         schema, HTML renderer, Playwright renderer (system Edge/Chrome)
   integrations/assets/*   Wikimedia, Openverse, Iconify, Unsplash, Pexels + licence policy

@@ -11,7 +11,7 @@ import { AssetImport } from "@/lib/validation/api";
 export const POST = handle(async (req: Request) => {
   const user = await requireUser();
   const body = await parseBody(req, AssetImport);
-  getProject(user.id, body.projectId);
+  await getProject(user.id, body.projectId);
   const { candidates } = await searchAssets(body.query, { providers: [body.candidate.provider], perPage: 30 });
   const candidate = candidates.find((c) => c.providerId === body.candidate.providerId);
   if (!candidate) throw new HttpError(404, "That result is no longer returned by the provider. Search again.");

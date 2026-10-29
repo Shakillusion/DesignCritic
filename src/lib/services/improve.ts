@@ -51,12 +51,12 @@ export interface EditRoundResult extends Record<string, unknown> {
 
 async function runEditRound(ctx: JobContext, input: EditRoundInput): Promise<EditRoundResult> {
   const { userId, base } = input;
-  const design = getDesign(userId, input.designId);
-  const project = getProject(userId, design.projectId);
-  const prefs = getPreferences(userId);
-  const brand: Brand | null = withBrandStrictness(project.brandId ? getBrand(userId, project.brandId) : null, prefs.brandStrictness);
+  const design = await getDesign(userId, input.designId);
+  const project = await getProject(userId, design.projectId);
+  const prefs = await getPreferences(userId);
+  const brand: Brand | null = withBrandStrictness(project.brandId ? await getBrand(userId, project.brandId) : null, prefs.brandStrictness);
   if (!base.renderFileId) throw new HttpError(409, "This version has no render yet.");
-  const knownAssetIds = new Set(listAssets(userId, { projectId: project.id }).filter((a) => a.status !== "rejected").map((a) => a.id));
+  const knownAssetIds = new Set((await listAssets(userId, { projectId: project.id })).filter((a) => a.status !== "rejected").map((a) => a.id));
   const { buffer } = await readFile(userId, base.renderFileId);
   const render = await prepareForVision(buffer);
 
@@ -76,7 +76,7 @@ async function runEditRound(ctx: JobContext, input: EditRoundInput): Promise<Edi
     state = await gateEdits(userId, brand, state, plan.edits, knownAssetIds);
 
     // One bounded correction round, told exactly which edits failed and why.
-    if (state.rejected.length) {
+    if (state.rejected.length && ctx.timeLeft() > 120_000) {
       detail(`Correction round: ${state.rejected.length} edit(s) were skipped`);
       const retryPlan = await proposeFixes({
         userId,
@@ -106,8 +106,8 @@ async function runEditRound(ctx: JobContext, input: EditRoundInput): Promise<Edi
   const summary = input.instruction ? `Assistant: ${input.instruction.slice(0, 140)}` : `${input.label}${fixedIds.length ? `: ${fixedIds.join(", ")}` : ""}`;
   const version = await commitVersion(userId, design.id, project.id, { ...outcome.doc, name: base.document.name }, outcome.png, outcome.qa, summary, "agent", base.id, { changes: outcome.applied, makeCurrent });
 
-  const baseCritique = base.critiqueId ? getCritique(userId, base.critiqueId) : null;
-  const critique = await ctx.step("critique", async (detail) => {
+  const baseCritique = base.critiqueId ? await getCritique(userId, base.critiqueId) : null;
+  const critique = ctx.timeLeft() < 75_000 ? (ctx.skip("critique", "Skipped to stay within the server time limit. Run Critique from the studio."), null) : await ctx.step("critique", async (detail) => {
     try {
       const c = await critiqueVersion(userId, version, project.id, brand, (design.brief.creativeBrief as CreativeBrief | undefined) ?? null);
       detail(`Score ${baseCritique?.overallScore ?? "–"} → ${c.overall}`);
@@ -176,13 +176,13 @@ async function gateEdits(userId: string, brand: Brand | null, start: GateState, 
  * the user's own file (text baked into them is softened so the live text layer
  * reads cleanly); text, shapes and colours become editable layers.
  */
-export function startRebuild(userId: string, critiqueId: string) {
-  const critique = getCritique(userId, critiqueId);
+export async function startRebuild(userId: string, critiqueId: string) {
+  const critique = await getCritique(userId, critiqueId);
   if (critique.designVersionId) throw new HttpError(409, "This critique is already of an editable design.");
-  const project = getProject(userId, critique.projectId);
-  const prefs = getPreferences(userId);
-  const brand = withBrandStrictness(project.brandId ? getBrand(userId, project.brandId) : null, prefs.brandStrictness);
-  return startJob(
+  const project = await getProject(userId, critique.projectId);
+  const prefs = await getPreferences(userId);
+  const brand = withBrandStrictness(project.brandId ? await getBrand(userId, project.brandId) : null, prefs.brandStrictness);
+  return await startJob(
     userId,
     {
       type: "rebuild",
@@ -222,7 +222,7 @@ export function startRebuild(userId: string, critiqueId: string) {
             crop = await sharp(crop).composite([{ input: patch, left, top }]).png().toBuffer();
           }
           const saved = await saveFile(userId, crop, { projectId: project.id, kind: "asset-original", originalName: `${file.originalName.replace(/\.[a-z0-9]+$/i, "")}-region-${index + 1}.png`, mime: "image/png", width: p.width, height: p.height, meta: { derivedFrom: file.id, region: p } });
-          const asset = insertAsset(userId, {
+          const asset = await insertAsset(userId, {
             projectId: project.id,
             fileId: saved.id,
             type: "photo",
@@ -259,7 +259,7 @@ export function startRebuild(userId: string, critiqueId: string) {
           doc = next;
           ({ png, qa } = await renderAndInspect(userId, doc, brand));
         }
-        const design = createDesign(userId, { projectId: project.id, name: doc.name, brief: { rebuiltFrom: file.id, critiqueId: critique.id, notes: recon.notes }, sourceFileId: file.id });
+        const design = await createDesign(userId, { projectId: project.id, name: doc.name, brief: { rebuiltFrom: file.id, critiqueId: critique.id, notes: recon.notes }, sourceFileId: file.id });
         const version = await commitVersion(userId, design.id, project.id, doc, png, qa, "Rebuilt from your upload", "agent", null);
         detail(`${doc.layers.length} editable layers · QA errors ${errorCount(qa)}${recon.notes ? ` · ${recon.notes.slice(0, 120)}` : ""}`);
         return { designId: design.id, versionId: version.id };
@@ -276,30 +276,30 @@ const EDIT_STEPS = [
 ];
 
 /** Apply a design critique's accepted findings (or all non-rejected ones) as a new version. */
-export function startApplyFixes(userId: string, critiqueId: string) {
-  const critique = getCritique(userId, critiqueId);
+export async function startApplyFixes(userId: string, critiqueId: string) {
+  const critique = await getCritique(userId, critiqueId);
   if (!critique.designVersionId) throw new HttpError(409, "This critique is of an uploaded image. Rebuild it as an editable design first.");
   if (critique.status !== "succeeded" || !critique.result) throw new HttpError(409, "The critique hasn't finished yet.");
-  const base = getVersion(userId, critique.designVersionId);
+  const base = await getVersion(userId, critique.designVersionId);
   const accepted = critique.result.findings.filter((f) => critique.decisions[f.id] === "accepted");
   const findings = accepted.length ? accepted : critique.result.findings.filter((f) => critique.decisions[f.id] !== "rejected");
   if (!findings.length) throw new HttpError(400, "Accept at least one finding (or leave some unrejected) to apply fixes.");
   const strengths = critique.result.strengths.map((s) => `${s.title}: ${s.description}`);
-  return startJob(userId, { type: "apply-fixes", projectId: critique.projectId, steps: EDIT_STEPS }, (ctx) =>
+  return await startJob(userId, { type: "apply-fixes", projectId: critique.projectId, steps: EDIT_STEPS }, (ctx) =>
     runEditRound(ctx, { userId, designId: base.designId, base, findings, strengths, label: "Applied critique fixes" }),
   );
 }
 
 /** Free-form change request (from the assistant) as a new version. */
-export function startInstructionEdit(userId: string, input: { designId: string; versionId?: string | null; instruction: string }, onDone?: (r: EditRoundResult | null, err?: unknown) => void) {
-  const design = getDesign(userId, input.designId);
+export async function startInstructionEdit(userId: string, input: { designId: string; versionId?: string | null; instruction: string }, onDone?: (r: EditRoundResult | null, err?: unknown) => void) {
+  const design = await getDesign(userId, input.designId);
   const versionId = input.versionId ?? design.currentVersionId;
   if (!versionId) throw new HttpError(409, "This design has no versions yet.");
-  const base = getVersion(userId, versionId);
+  const base = await getVersion(userId, versionId);
   if (base.designId !== design.id) throw new HttpError(400, "That version belongs to another design.");
-  const baseCritique = base.critiqueId ? getCritique(userId, base.critiqueId) : null;
+  const baseCritique = base.critiqueId ? await getCritique(userId, base.critiqueId) : null;
   const strengths = baseCritique?.result?.strengths.map((s) => `${s.title}: ${s.description}`) ?? [];
-  return startJob(userId, { type: "apply-fixes", projectId: design.projectId, steps: EDIT_STEPS }, async (ctx) => {
+  return await startJob(userId, { type: "apply-fixes", projectId: design.projectId, steps: EDIT_STEPS }, async (ctx) => {
     try {
       const r = await runEditRound(ctx, { userId, designId: design.id, base, findings: [], strengths, instruction: input.instruction, label: "Assistant edit" });
       onDone?.(r);

@@ -10,16 +10,16 @@ import { DEFAULT_FEEDS } from "@/lib/integrations/research/feeds";
 /** Integration status for the UI. Reports presence of configuration only — never key values. */
 export const GET = handle(async () => {
   const user = await requireUser();
-  const prefs = getPreferences(user.id);
+  const prefs = await getPreferences(user.id);
   let renderer: { available: boolean; detail: string };
   try {
-    const exe = findBrowserExecutable();
+    const exe = env.onVercel ? "Serverless Chromium" : findBrowserExecutable();
     renderer = exe ? { available: true, detail: exe.split(/[\\/]/).pop() ?? exe } : { available: false, detail: "No Edge or Chrome found. Set DESIGNCRITIC_BROWSER_PATH." };
   } catch (err) {
     renderer = { available: false, detail: err instanceof Error ? err.message : String(err) };
   }
   const selected = PROVIDERS[prefs.aiProvider] ?? PROVIDERS.gemini;
-  const active = engineChain(user.id).find((p) => p.isConfigured()) ?? null;
+  const active = (await engineChain(user.id)).find((p) => p.isConfigured()) ?? null;
   return json({
     ai: {
       /** True when the selected provider, or an allowed free fallback, can answer. */

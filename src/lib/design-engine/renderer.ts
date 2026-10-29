@@ -92,7 +92,24 @@ export function findBrowserExecutable(): string | null {
 // Survive Next.js dev HMR: keep the browser on globalThis instead of module scope.
 const g = globalThis as typeof globalThis & { __dcBrowser?: Promise<Browser> | null; __dcExitHook?: boolean };
 
+/** On Vercel there is no system browser: unpack the slim serverless Chromium bundled with the app. */
+async function serverlessChromium(): Promise<{ executablePath: string; args: string[] }> {
+  const { default: Chromium } = await import("@sparticuz/chromium");
+  Chromium.setGraphicsMode = false; // no WebGL needed, and it skips unpacking SwiftShader
+  return { executablePath: await Chromium.executablePath(), args: Chromium.args };
+}
+
 async function launch(): Promise<Browser> {
+  if (env.onVercel) {
+    const started = Date.now();
+    const { executablePath, args } = await serverlessChromium();
+    const browser = await chromium.launch({ executablePath, headless: true, args: [...args, "--font-render-hinting=none", "--disable-lcd-text", "--hide-scrollbars", "--mute-audio"] });
+    browser.on("disconnected", () => {
+      g.__dcBrowser = null;
+    });
+    logger.info("renderer.browser_launched", { executablePath, serverless: true, ms: Date.now() - started });
+    return browser;
+  }
   const executablePath = findBrowserExecutable();
   if (!executablePath) {
     throw new RendererUnavailableError(

@@ -49,22 +49,22 @@ export interface StructuredCallOptions<S extends z.ZodType> {
 }
 
 /** Which providers to try, in order, for this user. */
-export function engineChain(userId: string): AiProvider[] {
-  const prefs = getPreferences(userId);
+export async function engineChain(userId: string): Promise<AiProvider[]> {
+  const prefs = await getPreferences(userId);
   const primary = PROVIDERS[isProviderId(prefs.aiProvider) ? prefs.aiProvider : "gemini"];
   const rest = prefs.aiFallback ? FREE_PROVIDER_ORDER.filter((id) => id !== primary.id).map((id) => PROVIDERS[id]) : [];
   return [primary, ...rest];
 }
 
 /** Placeholder label stored before a call; replaced by the provider/model that actually answered. */
-export function engineLabel(userId: string): string {
-  const p = getPreferences(userId);
+export async function engineLabel(userId: string): Promise<string> {
+  const p = await getPreferences(userId);
   return `${p.aiProvider}/${p.aiModels[p.aiProvider] ?? "auto"}`;
 }
 
 /** Capabilities of the engine that will most likely answer (for agents that adapt, e.g. image counts). */
-export function engineLimits(userId: string): { maxImages: number; supportsPdf: boolean } {
-  const usable = engineChain(userId).filter((p) => p.isConfigured());
+export async function engineLimits(userId: string): Promise<{ maxImages: number; supportsPdf: boolean }> {
+  const usable = (await engineChain(userId)).filter((p) => p.isConfigured());
   const first = usable[0] ?? PROVIDERS.gemini;
   return { maxImages: first.maxImages, supportsPdf: first.supportsPdf };
 }
@@ -74,13 +74,13 @@ export function noProviderMessage() {
 }
 
 export async function structuredCall<S extends z.ZodType>(opts: StructuredCallOptions<S>): Promise<z.infer<S>> {
-  const chain = engineChain(opts.userId);
+  const chain = await engineChain(opts.userId);
   const configured = chain.filter((p) => p.isConfigured());
   if (!configured.length) {
     const primary = chain[0];
     throw new AiError("not-configured", primary.id === "anthropic" ? "Claude is selected in Settings but ANTHROPIC_API_KEY isn't set. Add it or switch to a free provider." : noProviderMessage(), primary.id);
   }
-  const prefs = getPreferences(opts.userId);
+  const prefs = await getPreferences(opts.userId);
   const jsonSchema = toProviderSchema(opts.schema);
   const images = opts.content.filter((c) => c.type === "image").length;
   const hasPdf = opts.content.some((c) => c.type === "pdf");
@@ -163,7 +163,7 @@ async function attempt<S extends z.ZodType>(provider: AiProvider, model: string,
       const price = provider.pricing(model);
       logger.info("ai.call", { operation: opts.operation, provider: provider.id, model, status, durationMs, ...usage });
       try {
-        recordUsage(opts.userId, {
+        await recordUsage(opts.userId, {
           operation: opts.operation,
           model: `${provider.id}/${model}`,
           inputTokens: usage.input,

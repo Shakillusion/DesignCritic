@@ -66,8 +66,8 @@ const toProject = (r: Row): Project => ({
   updatedAt: String(r.updated_at),
 });
 
-export function listProjects(userId: string): ProjectSummary[] {
-  const rows = getDb()
+export async function listProjects(userId: string): Promise<ProjectSummary[]> {
+  const rows = await getDb()
     .prepare(
       `SELECT p.*, b.name AS brand_name,
         (SELECT COUNT(*) FROM critiques c WHERE c.project_id = p.id) AS critique_count,
@@ -92,26 +92,26 @@ export function listProjects(userId: string): ProjectSummary[] {
   }));
 }
 
-export function getProject(userId: string, id: string): Project {
-  const r = getDb().prepare("SELECT * FROM projects WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
+export async function getProject(userId: string, id: string): Promise<Project> {
+  const r = await getDb().prepare("SELECT * FROM projects WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
   if (!r) throw new NotFoundError("Project");
   return toProject(r);
 }
 
-export function createProject(userId: string, input: { name: string; description?: string; brandId?: string | null }): Project {
-  if (input.brandId) getBrand(userId, input.brandId);
+export async function createProject(userId: string, input: { name: string; description?: string; brandId?: string | null }): Promise<Project> {
+  if (input.brandId) await getBrand(userId, input.brandId);
   const id = newId("prj");
   const t = now();
-  getDb()
+  await getDb()
     .prepare("INSERT INTO projects (id, user_id, name, description, brand_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
     .run(id, userId, input.name, input.description ?? "", input.brandId ?? null, t, t);
-  return getProject(userId, id);
+  return await getProject(userId, id);
 }
 
-export function updateProject(userId: string, id: string, patch: { name?: string; description?: string; brandId?: string | null }): Project {
-  const p = getProject(userId, id);
-  if (patch.brandId) getBrand(userId, patch.brandId);
-  getDb()
+export async function updateProject(userId: string, id: string, patch: { name?: string; description?: string; brandId?: string | null }): Promise<Project> {
+  const p = await getProject(userId, id);
+  if (patch.brandId) await getBrand(userId, patch.brandId);
+  await getDb()
     .prepare("UPDATE projects SET name = ?, description = ?, brand_id = ?, updated_at = ? WHERE id = ? AND user_id = ?")
     .run(
       patch.name ?? p.name,
@@ -121,35 +121,35 @@ export function updateProject(userId: string, id: string, patch: { name?: string
       id,
       userId,
     );
-  return getProject(userId, id);
+  return await getProject(userId, id);
 }
 
-export function touchProject(userId: string, id: string) {
-  getDb().prepare("UPDATE projects SET updated_at = ? WHERE id = ? AND user_id = ?").run(now(), id, userId);
+export async function touchProject(userId: string, id: string) {
+  await getDb().prepare("UPDATE projects SET updated_at = ? WHERE id = ? AND user_id = ?").run(now(), id, userId);
 }
 
 /** Deletes the project and its rows; returns the storage paths the caller must remove. */
-export function deleteProject(userId: string, id: string): string[] {
-  getProject(userId, id);
-  return transaction(() => {
-    const paths = (getDb().prepare("SELECT storage_path FROM files WHERE project_id = ? AND user_id = ?").all(id, userId) as Row[]).map(
+export async function deleteProject(userId: string, id: string): Promise<string[]> {
+  await getProject(userId, id);
+  return await transaction(async () => {
+    const paths = (await getDb().prepare("SELECT storage_path FROM files WHERE project_id = ? AND user_id = ?").all(id, userId) as Row[]).map(
       (r) => String(r.storage_path),
     );
     const db = getDb();
-    db.prepare("DELETE FROM critiques WHERE project_id = ?").run(id);
-    db.prepare("DELETE FROM asset_usages WHERE asset_id IN (SELECT id FROM assets WHERE project_id = ?)").run(id);
-    db.prepare("DELETE FROM design_versions WHERE design_id IN (SELECT id FROM designs WHERE project_id = ?)").run(id);
-    db.prepare("DELETE FROM designs WHERE project_id = ?").run(id);
-    db.prepare("DELETE FROM assets WHERE project_id = ?").run(id);
-    db.prepare("DELETE FROM jobs WHERE project_id = ?").run(id);
+    await db.prepare("DELETE FROM critiques WHERE project_id = ?").run(id);
+    await db.prepare("DELETE FROM asset_usages WHERE asset_id IN (SELECT id FROM assets WHERE project_id = ?)").run(id);
+    await db.prepare("DELETE FROM design_versions WHERE design_id IN (SELECT id FROM designs WHERE project_id = ?)").run(id);
+    await db.prepare("DELETE FROM designs WHERE project_id = ?").run(id);
+    await db.prepare("DELETE FROM assets WHERE project_id = ?").run(id);
+    await db.prepare("DELETE FROM jobs WHERE project_id = ?").run(id);
     // Research rows reference files (thumbnails), so they go before the files.
-    db.prepare("DELETE FROM directions WHERE project_id = ?").run(id);
-    db.prepare("DELETE FROM moodboards WHERE project_id = ?").run(id);
-    db.prepare("DELETE FROM refs WHERE project_id = ?").run(id);
-    db.prepare("DELETE FROM research_runs WHERE project_id = ?").run(id);
-    db.prepare("DELETE FROM chat_messages WHERE project_id = ?").run(id);
-    db.prepare("DELETE FROM files WHERE project_id = ?").run(id);
-    db.prepare("DELETE FROM projects WHERE id = ? AND user_id = ?").run(id, userId);
+    await db.prepare("DELETE FROM directions WHERE project_id = ?").run(id);
+    await db.prepare("DELETE FROM moodboards WHERE project_id = ?").run(id);
+    await db.prepare("DELETE FROM refs WHERE project_id = ?").run(id);
+    await db.prepare("DELETE FROM research_runs WHERE project_id = ?").run(id);
+    await db.prepare("DELETE FROM chat_messages WHERE project_id = ?").run(id);
+    await db.prepare("DELETE FROM files WHERE project_id = ?").run(id);
+    await db.prepare("DELETE FROM projects WHERE id = ? AND user_id = ?").run(id, userId);
     return paths;
   });
 }
@@ -177,8 +177,8 @@ const toBrand = (r: Row): Brand => ({
 
 export type BrandInput = Partial<Omit<Brand, "id" | "createdAt" | "updatedAt">> & { name?: string };
 
-export function listBrands(userId: string): (Brand & { projectCount: number })[] {
-  const rows = getDb()
+export async function listBrands(userId: string): Promise<(Brand & { projectCount: number })[]> {
+  const rows = await getDb()
     .prepare(
       `SELECT b.*, (SELECT COUNT(*) FROM projects p WHERE p.brand_id = b.id) AS project_count
        FROM brands b WHERE b.user_id = ? ORDER BY b.updated_at DESC`,
@@ -187,16 +187,16 @@ export function listBrands(userId: string): (Brand & { projectCount: number })[]
   return rows.map((r) => ({ ...toBrand(r), projectCount: Number(r.project_count) }));
 }
 
-export function getBrand(userId: string, id: string): Brand {
-  const r = getDb().prepare("SELECT * FROM brands WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
+export async function getBrand(userId: string, id: string): Promise<Brand> {
+  const r = await getDb().prepare("SELECT * FROM brands WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
   if (!r) throw new NotFoundError("Brand");
   return toBrand(r);
 }
 
-export function createBrand(userId: string, input: BrandInput & { name: string }): Brand {
+export async function createBrand(userId: string, input: BrandInput & { name: string }): Promise<Brand> {
   const id = newId("brd");
   const t = now();
-  getDb()
+  await getDb()
     .prepare(
       `INSERT INTO brands (id, user_id, name, description, industry, audience, personality, photography_style, graphic_elements,
         colors, typography, restrictions, logo_file_ids, reference_file_ids, guideline_file_ids, created_at, updated_at)
@@ -221,8 +221,8 @@ export function createBrand(userId: string, input: BrandInput & { name: string }
       t,
       t,
     );
-  addBrandChange(id, "Brand profile created", {});
-  return getBrand(userId, id);
+  await addBrandChange(id, "Brand profile created", {});
+  return await getBrand(userId, id);
 }
 
 const BRAND_FIELDS: [keyof BrandInput, string, boolean][] = [
@@ -241,8 +241,8 @@ const BRAND_FIELDS: [keyof BrandInput, string, boolean][] = [
   ["guidelineFileIds", "guideline_file_ids", true],
 ];
 
-export function updateBrand(userId: string, id: string, patch: BrandInput, summary?: string): Brand {
-  const before = getBrand(userId, id);
+export async function updateBrand(userId: string, id: string, patch: BrandInput, summary?: string): Promise<Brand> {
+  const before = await getBrand(userId, id);
   const sets: string[] = [];
   const values: (string | null)[] = [];
   const changed: string[] = [];
@@ -256,34 +256,34 @@ export function updateBrand(userId: string, id: string, patch: BrandInput, summa
     changed.push(key);
   }
   if (!sets.length) return before;
-  getDb()
+  await getDb()
     .prepare(`UPDATE brands SET ${sets.join(", ")}, updated_at = ? WHERE id = ? AND user_id = ?`)
     .run(...values, now(), id, userId);
-  addBrandChange(id, summary ?? `Updated ${changed.join(", ")}`, { fields: changed });
-  return getBrand(userId, id);
+  await addBrandChange(id, summary ?? `Updated ${changed.join(", ")}`, { fields: changed });
+  return await getBrand(userId, id);
 }
 
-export function deleteBrand(userId: string, id: string): string[] {
-  getBrand(userId, id);
-  return transaction(() => {
-    const paths = (getDb().prepare("SELECT storage_path FROM files WHERE brand_id = ? AND user_id = ?").all(id, userId) as Row[]).map(
+export async function deleteBrand(userId: string, id: string): Promise<string[]> {
+  await getBrand(userId, id);
+  return await transaction(async () => {
+    const paths = (await getDb().prepare("SELECT storage_path FROM files WHERE brand_id = ? AND user_id = ?").all(id, userId) as Row[]).map(
       (r) => String(r.storage_path),
     );
-    getDb().prepare("DELETE FROM files WHERE brand_id = ? AND user_id = ?").run(id, userId);
-    getDb().prepare("DELETE FROM brands WHERE id = ? AND user_id = ?").run(id, userId);
+    await getDb().prepare("DELETE FROM files WHERE brand_id = ? AND user_id = ?").run(id, userId);
+    await getDb().prepare("DELETE FROM brands WHERE id = ? AND user_id = ?").run(id, userId);
     return paths;
   });
 }
 
-function addBrandChange(brandId: string, summary: string, detail: Record<string, unknown>) {
-  getDb()
+async function addBrandChange(brandId: string, summary: string, detail: Record<string, unknown>) {
+  await getDb()
     .prepare("INSERT INTO brand_changes (id, brand_id, summary, detail, created_at) VALUES (?, ?, ?, ?, ?)")
     .run(newId("bch"), brandId, summary, JSON.stringify(detail), now());
 }
 
-export function listBrandChanges(userId: string, brandId: string): BrandChange[] {
-  getBrand(userId, brandId);
-  return (getDb().prepare("SELECT * FROM brand_changes WHERE brand_id = ? ORDER BY created_at DESC").all(brandId) as Row[]).map((r) => ({
+export async function listBrandChanges(userId: string, brandId: string): Promise<BrandChange[]> {
+  await getBrand(userId, brandId);
+  return (await getDb().prepare("SELECT * FROM brand_changes WHERE brand_id = ? ORDER BY created_at DESC").all(brandId) as Row[]).map((r) => ({
     id: String(r.id),
     brandId: String(r.brand_id),
     summary: String(r.summary),
@@ -323,8 +323,8 @@ export interface FileInsert {
   meta?: Record<string, unknown>;
 }
 
-export function insertFile(userId: string, f: FileInsert, id = newId("fil")): StoredFile {
-  getDb()
+export async function insertFile(userId: string, f: FileInsert, id = newId("fil")): Promise<StoredFile> {
+  await getDb()
     .prepare(
       `INSERT INTO files (id, user_id, project_id, brand_id, kind, original_name, mime, size, width, height, storage_path, sha256, meta, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -345,22 +345,22 @@ export function insertFile(userId: string, f: FileInsert, id = newId("fil")): St
       JSON.stringify(f.meta ?? {}),
       now(),
     );
-  return getFile(userId, id);
+  return await getFile(userId, id);
 }
 
-export function getFile(userId: string, id: string): StoredFile {
-  const r = getDb().prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
+export async function getFile(userId: string, id: string): Promise<StoredFile> {
+  const r = await getDb().prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
   if (!r) throw new NotFoundError("File");
   return toFile(r);
 }
 
-export function getFileStoragePath(userId: string, id: string): { file: StoredFile; storagePath: string } {
-  const r = getDb().prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
+export async function getFileStoragePath(userId: string, id: string): Promise<{ file: StoredFile; storagePath: string }> {
+  const r = await getDb().prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
   if (!r) throw new NotFoundError("File");
   return { file: toFile(r), storagePath: String(r.storage_path) };
 }
 
-export function listFiles(userId: string, filter: { projectId?: string; brandId?: string; kind?: FileKind }): StoredFile[] {
+export async function listFiles(userId: string, filter: { projectId?: string; brandId?: string; kind?: FileKind }): Promise<StoredFile[]> {
   const where = ["user_id = ?"];
   const args: string[] = [userId];
   if (filter.projectId) {
@@ -375,7 +375,7 @@ export function listFiles(userId: string, filter: { projectId?: string; brandId?
     where.push("kind = ?");
     args.push(filter.kind);
   }
-  return (getDb().prepare(`SELECT * FROM files WHERE ${where.join(" AND ")} ORDER BY created_at DESC`).all(...args) as Row[]).map(toFile);
+  return (await getDb().prepare(`SELECT * FROM files WHERE ${where.join(" AND ")} ORDER BY created_at DESC`).all(...args) as Row[]).map(toFile);
 }
 
 /* ───────────────────────── Assets ───────────────────────── */
@@ -423,10 +423,10 @@ export type AssetInsert = Omit<Asset, "id" | "createdAt" | "width" | "height" | 
   preparedFileId?: string | null;
 };
 
-export function insertAsset(userId: string, a: AssetInsert): Asset {
-  getProject(userId, a.projectId);
+export async function insertAsset(userId: string, a: AssetInsert): Promise<Asset> {
+  await getProject(userId, a.projectId);
   const id = newId("ast");
-  getDb()
+  await getDb()
     .prepare(
       `INSERT INTO assets (id, user_id, project_id, file_id, prepared_file_id, type, source, provider, provider_id, title, creator, creator_url,
         source_url, license, attribution, status, locked, analysis, retrieved_at, created_at)
@@ -454,23 +454,23 @@ export function insertAsset(userId: string, a: AssetInsert): Asset {
       a.retrievedAt,
       now(),
     );
-  return getAsset(userId, id);
+  return await getAsset(userId, id);
 }
 
-export function getAsset(userId: string, id: string): Asset {
-  const r = getDb().prepare(`${ASSET_SELECT} WHERE a.id = ? AND a.user_id = ?`).get(id, userId) as Row | undefined;
+export async function getAsset(userId: string, id: string): Promise<Asset> {
+  const r = await getDb().prepare(`${ASSET_SELECT} WHERE a.id = ? AND a.user_id = ?`).get(id, userId) as Row | undefined;
   if (!r) throw new NotFoundError("Asset");
   return toAsset(r);
 }
 
-export function findAssetByProviderId(userId: string, projectId: string, provider: string, providerId: string): Asset | null {
-  const r = getDb()
+export async function findAssetByProviderId(userId: string, projectId: string, provider: string, providerId: string): Promise<Asset | null> {
+  const r = await getDb()
     .prepare(`${ASSET_SELECT} WHERE a.user_id = ? AND a.project_id = ? AND a.provider = ? AND a.provider_id = ?`)
     .get(userId, projectId, provider, providerId) as Row | undefined;
   return r ? toAsset(r) : null;
 }
 
-export function listAssets(userId: string, filter: { projectId?: string; type?: string; status?: string } = {}): (Asset & { projectName: string })[] {
+export async function listAssets(userId: string, filter: { projectId?: string; type?: string; status?: string } = {}): Promise<(Asset & { projectName: string })[]> {
   const where = ["a.user_id = ?"];
   const args: string[] = [userId];
   if (filter.projectId) {
@@ -485,7 +485,7 @@ export function listAssets(userId: string, filter: { projectId?: string; type?: 
     where.push("a.status = ?");
     args.push(filter.status);
   }
-  const rows = getDb()
+  const rows = await getDb()
     .prepare(
       `SELECT x.*, p.name AS project_name FROM (${ASSET_SELECT} WHERE ${where.join(" AND ")}) x
        JOIN projects p ON p.id = x.project_id ORDER BY x.created_at DESC`,
@@ -494,9 +494,9 @@ export function listAssets(userId: string, filter: { projectId?: string; type?: 
   return rows.map((r) => ({ ...toAsset(r), projectName: String(r.project_name) }));
 }
 
-export function updateAsset(userId: string, id: string, patch: { status?: Asset["status"]; locked?: boolean; analysis?: Asset["analysis"]; preparedFileId?: string }): Asset {
-  const a = getAsset(userId, id);
-  getDb()
+export async function updateAsset(userId: string, id: string, patch: { status?: Asset["status"]; locked?: boolean; analysis?: Asset["analysis"]; preparedFileId?: string }): Promise<Asset> {
+  const a = await getAsset(userId, id);
+  await getDb()
     .prepare("UPDATE assets SET status = ?, locked = ?, analysis = ?, prepared_file_id = ? WHERE id = ? AND user_id = ?")
     .run(
       patch.status ?? a.status,
@@ -506,19 +506,20 @@ export function updateAsset(userId: string, id: string, patch: { status?: Asset[
       id,
       userId,
     );
-  return getAsset(userId, id);
+  return await getAsset(userId, id);
 }
 
 /** Removes an unused, unlocked asset. Returns storage paths to delete. */
-export function deleteAsset(userId: string, id: string): string[] {
-  const a = getAsset(userId, id);
+export async function deleteAsset(userId: string, id: string): Promise<string[]> {
+  const a = await getAsset(userId, id);
   if (a.locked) throw new ConflictError("This asset is locked. Unlock it before removing it.");
   if (a.usageCount > 0) throw new ConflictError(`This asset is used in ${a.usageCount} design version(s) and can't be removed.`);
-  return transaction(() => {
+  return await transaction(async () => {
     const fileIds = [a.fileId, a.preparedFileId].filter(Boolean) as string[];
-    const paths = fileIds.map((f) => getFileStoragePath(userId, f).storagePath);
-    getDb().prepare("DELETE FROM assets WHERE id = ? AND user_id = ?").run(id, userId);
-    for (const f of fileIds) getDb().prepare("DELETE FROM files WHERE id = ? AND user_id = ?").run(f, userId);
+    const paths: string[] = [];
+    for (const f of fileIds) paths.push((await getFileStoragePath(userId, f)).storagePath);
+    await getDb().prepare("DELETE FROM assets WHERE id = ? AND user_id = ?").run(id, userId);
+    for (const f of fileIds) await getDb().prepare("DELETE FROM files WHERE id = ? AND user_id = ?").run(f, userId);
     return paths;
   });
 }
@@ -552,25 +553,25 @@ const toVersion = (r: Row): DesignVersion => ({
   changes: json(r.changes, []),
 });
 
-export function createDesign(userId: string, input: { projectId: string; name: string; brief: Record<string, unknown>; sourceFileId?: string | null }): Design {
-  getProject(userId, input.projectId);
+export async function createDesign(userId: string, input: { projectId: string; name: string; brief: Record<string, unknown>; sourceFileId?: string | null }): Promise<Design> {
+  await getProject(userId, input.projectId);
   const id = newId("dsn");
   const t = now();
-  getDb()
+  await getDb()
     .prepare("INSERT INTO designs (id, user_id, project_id, name, brief, source_file_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
     .run(id, userId, input.projectId, input.name, JSON.stringify(input.brief), input.sourceFileId ?? null, t, t);
-  touchProject(userId, input.projectId);
-  return getDesign(userId, id);
+  await touchProject(userId, input.projectId);
+  return await getDesign(userId, id);
 }
 
-export function getDesign(userId: string, id: string): Design {
-  const r = getDb().prepare("SELECT * FROM designs WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
+export async function getDesign(userId: string, id: string): Promise<Design> {
+  const r = await getDb().prepare("SELECT * FROM designs WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
   if (!r) throw new NotFoundError("Design");
   return toDesign(r);
 }
 
-export function listDesigns(userId: string, projectId?: string): (Design & { renderFileId: string | null; versionCount: number; projectName: string })[] {
-  const rows = getDb()
+export async function listDesigns(userId: string, projectId?: string): Promise<(Design & { renderFileId: string | null; versionCount: number; projectName: string })[]> {
+  const rows = await getDb()
     .prepare(
       `SELECT d.*, p.name AS project_name, v.render_file_id,
         (SELECT COUNT(*) FROM design_versions x WHERE x.design_id = d.id) AS version_count
@@ -587,82 +588,82 @@ export function listDesigns(userId: string, projectId?: string): (Design & { ren
   }));
 }
 
-export function renameDesign(userId: string, id: string, name: string): Design {
-  getDesign(userId, id);
-  getDb().prepare("UPDATE designs SET name = ?, updated_at = ? WHERE id = ? AND user_id = ?").run(name, now(), id, userId);
-  return getDesign(userId, id);
+export async function renameDesign(userId: string, id: string, name: string): Promise<Design> {
+  await getDesign(userId, id);
+  await getDb().prepare("UPDATE designs SET name = ?, updated_at = ? WHERE id = ? AND user_id = ?").run(name, now(), id, userId);
+  return await getDesign(userId, id);
 }
 
-export function deleteDesign(userId: string, id: string): string[] {
-  getDesign(userId, id);
-  return transaction(() => {
+export async function deleteDesign(userId: string, id: string): Promise<string[]> {
+  await getDesign(userId, id);
+  return await transaction(async () => {
     const db = getDb();
-    const renders = db
+    const renders = await db
       .prepare(
         `SELECT f.id, f.storage_path FROM files f JOIN design_versions v ON v.render_file_id = f.id WHERE v.design_id = ? AND f.user_id = ?`,
       )
       .all(id, userId) as Row[];
-    db.prepare("UPDATE critiques SET design_version_id = NULL WHERE design_version_id IN (SELECT id FROM design_versions WHERE design_id = ?)").run(id);
-    db.prepare("DELETE FROM design_versions WHERE design_id = ?").run(id);
-    db.prepare("DELETE FROM designs WHERE id = ? AND user_id = ?").run(id, userId);
+    await db.prepare("UPDATE critiques SET design_version_id = NULL WHERE design_version_id IN (SELECT id FROM design_versions WHERE design_id = ?)").run(id);
+    await db.prepare("DELETE FROM design_versions WHERE design_id = ?").run(id);
+    await db.prepare("DELETE FROM designs WHERE id = ? AND user_id = ?").run(id, userId);
     // Renders referenced by a critique must survive: the critique still shows them.
     const paths: string[] = [];
     for (const f of renders) {
-      if (db.prepare("SELECT 1 FROM critiques WHERE file_id = ? LIMIT 1").get(String(f.id))) continue;
-      db.prepare("DELETE FROM files WHERE id = ? AND user_id = ?").run(String(f.id), userId);
+      if (await db.prepare("SELECT 1 FROM critiques WHERE file_id = ? LIMIT 1").get(String(f.id))) continue;
+      await db.prepare("DELETE FROM files WHERE id = ? AND user_id = ?").run(String(f.id), userId);
       paths.push(String(f.storage_path));
     }
     return paths;
   });
 }
 
-export function addDesignVersion(
+export async function addDesignVersion(
   userId: string,
   designId: string,
   input: { document: DesignDocument; changeSummary: string; createdBy: "agent" | "user"; parentVersionId?: string | null; assetIds: string[]; changes?: AppliedChange[]; makeCurrent?: boolean },
-): DesignVersion {
-  const design = getDesign(userId, designId);
-  return transaction(() => {
+): Promise<DesignVersion> {
+  const design = await getDesign(userId, designId);
+  return await transaction(async () => {
     const db = getDb();
-    const { n } = db.prepare("SELECT COALESCE(MAX(number), 0) + 1 AS n FROM design_versions WHERE design_id = ?").get(designId) as { n: number };
+    const { n } = await db.prepare("SELECT COALESCE(MAX(number), 0) + 1 AS n FROM design_versions WHERE design_id = ?").get(designId) as { n: number };
     const id = newId("ver");
-    db.prepare(
+    await db.prepare(
       `INSERT INTO design_versions (id, design_id, number, parent_version_id, document, change_summary, created_by, changes, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(id, designId, n, input.parentVersionId ?? design.currentVersionId, JSON.stringify(input.document), input.changeSummary, input.createdBy, JSON.stringify(input.changes ?? []), now());
     for (const assetId of input.assetIds) {
       // Only link assets that belong to this user + project.
-      const ok = db.prepare("SELECT 1 FROM assets WHERE id = ? AND user_id = ? AND project_id = ?").get(assetId, userId, design.projectId);
-      if (ok) db.prepare("INSERT OR IGNORE INTO asset_usages (asset_id, design_version_id) VALUES (?, ?)").run(assetId, id);
+      const ok = await db.prepare("SELECT 1 FROM assets WHERE id = ? AND user_id = ? AND project_id = ?").get(assetId, userId, design.projectId);
+      if (ok) await db.prepare("INSERT OR IGNORE INTO asset_usages (asset_id, design_version_id) VALUES (?, ?)").run(assetId, id);
     }
     // Agent versions can wait for review instead of becoming current (Settings → ask before applying).
-    if (input.makeCurrent !== false || !design.currentVersionId) db.prepare("UPDATE designs SET current_version_id = ?, updated_at = ? WHERE id = ?").run(id, now(), designId);
-    else db.prepare("UPDATE designs SET updated_at = ? WHERE id = ?").run(now(), designId);
-    touchProject(userId, design.projectId);
-    return getVersion(userId, id);
+    if (input.makeCurrent !== false || !design.currentVersionId) await db.prepare("UPDATE designs SET current_version_id = ?, updated_at = ? WHERE id = ?").run(id, now(), designId);
+    else await db.prepare("UPDATE designs SET updated_at = ? WHERE id = ?").run(now(), designId);
+    await touchProject(userId, design.projectId);
+    return await getVersion(userId, id);
   });
 }
 
-export function getVersion(userId: string, versionId: string): DesignVersion {
-  const r = getDb()
+export async function getVersion(userId: string, versionId: string): Promise<DesignVersion> {
+  const r = await getDb()
     .prepare("SELECT v.* FROM design_versions v JOIN designs d ON d.id = v.design_id WHERE v.id = ? AND d.user_id = ?")
     .get(versionId, userId) as Row | undefined;
   if (!r) throw new NotFoundError("Design version");
   return toVersion(r);
 }
 
-export function listVersions(userId: string, designId: string): DesignVersion[] {
-  getDesign(userId, designId);
-  return (getDb().prepare("SELECT * FROM design_versions WHERE design_id = ? ORDER BY number DESC").all(designId) as Row[]).map(toVersion);
+export async function listVersions(userId: string, designId: string): Promise<DesignVersion[]> {
+  await getDesign(userId, designId);
+  return (await getDb().prepare("SELECT * FROM design_versions WHERE design_id = ? ORDER BY number DESC").all(designId) as Row[]).map(toVersion);
 }
 
-export function updateVersionMeta(
+export async function updateVersionMeta(
   userId: string,
   versionId: string,
   patch: { renderFileId?: string; qa?: unknown; critiqueId?: string; approved?: boolean },
-): DesignVersion {
-  const v = getVersion(userId, versionId);
-  getDb()
+): Promise<DesignVersion> {
+  const v = await getVersion(userId, versionId);
+  await getDb()
     .prepare("UPDATE design_versions SET render_file_id = ?, qa = ?, critique_id = ?, approved = ? WHERE id = ?")
     .run(
       patch.renderFileId ?? v.renderFileId,
@@ -671,13 +672,13 @@ export function updateVersionMeta(
       (patch.approved ?? v.approved) ? 1 : 0,
       versionId,
     );
-  return getVersion(userId, versionId);
+  return await getVersion(userId, versionId);
 }
 
-export function setCurrentVersion(userId: string, designId: string, versionId: string) {
-  const v = getVersion(userId, versionId);
+export async function setCurrentVersion(userId: string, designId: string, versionId: string) {
+  const v = await getVersion(userId, versionId);
   if (v.designId !== designId) throw new NotFoundError("Design version");
-  getDb().prepare("UPDATE designs SET current_version_id = ?, updated_at = ? WHERE id = ? AND user_id = ?").run(versionId, now(), designId, userId);
+  await getDb().prepare("UPDATE designs SET current_version_id = ?, updated_at = ? WHERE id = ? AND user_id = ?").run(versionId, now(), designId, userId);
 }
 
 /* ───────────────────────── Critiques ───────────────────────── */
@@ -702,13 +703,13 @@ const toCritique = (r: Row): Critique => ({
   completedAt: str(r.completed_at),
 });
 
-export function createCritique(
+export async function createCritique(
   userId: string,
   input: Pick<Critique, "projectId" | "fileId" | "brandId" | "title" | "model" | "context" | "technical"> & { designVersionId?: string | null },
-): Critique {
-  getProject(userId, input.projectId);
+): Promise<Critique> {
+  await getProject(userId, input.projectId);
   const id = newId("crt");
-  getDb()
+  await getDb()
     .prepare(
       `INSERT INTO critiques (id, user_id, project_id, file_id, design_version_id, brand_id, title, status, model, context, technical, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)`,
@@ -726,18 +727,18 @@ export function createCritique(
       JSON.stringify(input.technical),
       now(),
     );
-  touchProject(userId, input.projectId);
-  return getCritique(userId, id);
+  await touchProject(userId, input.projectId);
+  return await getCritique(userId, id);
 }
 
-export function getCritique(userId: string, id: string): Critique {
-  const r = getDb().prepare("SELECT * FROM critiques WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
+export async function getCritique(userId: string, id: string): Promise<Critique> {
+  const r = await getDb().prepare("SELECT * FROM critiques WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
   if (!r) throw new NotFoundError("Critique");
   return toCritique(r);
 }
 
-export function listCritiques(userId: string, projectId?: string): (Critique & { projectName: string })[] {
-  const rows = getDb()
+export async function listCritiques(userId: string, projectId?: string): Promise<(Critique & { projectName: string })[]> {
+  const rows = await getDb()
     .prepare(
       `SELECT c.*, p.name AS project_name FROM critiques c JOIN projects p ON p.id = c.project_id
        WHERE c.user_id = ? ${projectId ? "AND c.project_id = ?" : ""} ORDER BY c.created_at DESC`,
@@ -746,13 +747,13 @@ export function listCritiques(userId: string, projectId?: string): (Critique & {
   return rows.map((r) => ({ ...toCritique(r), projectName: String(r.project_name) }));
 }
 
-export function updateCritique(
+export async function updateCritique(
   userId: string,
   id: string,
   patch: Partial<Pick<Critique, "status" | "result" | "overallScore" | "decisions" | "improvementPlan" | "error" | "completedAt" | "title" | "model">>,
-): Critique {
-  const c = getCritique(userId, id);
-  getDb()
+): Promise<Critique> {
+  const c = await getCritique(userId, id);
+  await getDb()
     .prepare(
       `UPDATE critiques SET status = ?, result = ?, overall_score = ?, decisions = ?, improvement_plan = ?, error = ?, completed_at = ?, title = ?, model = ?
        WHERE id = ? AND user_id = ?`,
@@ -770,13 +771,13 @@ export function updateCritique(
       id,
       userId,
     );
-  return getCritique(userId, id);
+  return await getCritique(userId, id);
 }
 
-export function deleteCritique(userId: string, id: string) {
-  getCritique(userId, id);
-  getDb().prepare("UPDATE design_versions SET critique_id = NULL WHERE critique_id = ?").run(id);
-  getDb().prepare("DELETE FROM critiques WHERE id = ? AND user_id = ?").run(id, userId);
+export async function deleteCritique(userId: string, id: string) {
+  await getCritique(userId, id);
+  await getDb().prepare("UPDATE design_versions SET critique_id = NULL WHERE critique_id = ?").run(id);
+  await getDb().prepare("DELETE FROM critiques WHERE id = ? AND user_id = ?").run(id, userId);
 }
 
 /* ───────────────────────── Jobs ───────────────────────── */
@@ -793,24 +794,24 @@ const toJob = (r: Row): Job => ({
   updatedAt: String(r.updated_at),
 });
 
-export function createJob(userId: string, input: { type: Job["type"]; projectId: string | null; steps: JobStep[] }): Job {
+export async function createJob(userId: string, input: { type: Job["type"]; projectId: string | null; steps: JobStep[] }): Promise<Job> {
   const id = newId("job");
   const t = now();
-  getDb()
+  await getDb()
     .prepare("INSERT INTO jobs (id, user_id, project_id, type, status, steps, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)")
     .run(id, userId, input.projectId, input.type, JSON.stringify(input.steps), t, t);
-  return getJob(userId, id);
+  return await getJob(userId, id);
 }
 
-export function getJob(userId: string, id: string): Job {
-  const r = getDb().prepare("SELECT * FROM jobs WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
+export async function getJob(userId: string, id: string): Promise<Job> {
+  const r = await getDb().prepare("SELECT * FROM jobs WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
   if (!r) throw new NotFoundError("Job");
   return toJob(r);
 }
 
-export function updateJob(userId: string, id: string, patch: Partial<Pick<Job, "status" | "steps" | "result" | "error">>): Job {
-  const j = getJob(userId, id);
-  getDb()
+export async function updateJob(userId: string, id: string, patch: Partial<Pick<Job, "status" | "steps" | "result" | "error">>): Promise<Job> {
+  const j = await getJob(userId, id);
+  await getDb()
     .prepare("UPDATE jobs SET status = ?, steps = ?, result = ?, error = ?, updated_at = ? WHERE id = ? AND user_id = ?")
     .run(
       patch.status ?? j.status,
@@ -821,26 +822,28 @@ export function updateJob(userId: string, id: string, patch: Partial<Pick<Job, "
       id,
       userId,
     );
-  return getJob(userId, id);
+  return await getJob(userId, id);
 }
 
 /** Jobs left running when the server stopped can never finish; mark them failed. */
-export function failOrphanedJobs() {
-  getDb()
-    .prepare("UPDATE jobs SET status = 'failed', error = 'Interrupted: the server restarted while this was running.' WHERE status IN ('queued','running')")
-    .run();
-  getDb()
-    .prepare("UPDATE critiques SET status = 'failed', error = 'Interrupted: the server restarted while this was running.' WHERE status IN ('queued','running')")
-    .run();
+/**
+ * Fail work that can no longer finish. With no cutoff, everything still running
+ * (a single local server restarted); with a cutoff, only work untouched since then.
+ */
+export async function failInterruptedWork(staleBefore: string | null) {
+  const msg = staleBefore ? "Interrupted: this ran past the server time limit. Try again, or use fewer QA rounds or variations." : "Interrupted: the server restarted while this was running.";
+  const cutoff = staleBefore ?? "9999";
+  await getDb().prepare("UPDATE jobs SET status = 'failed', error = ?, updated_at = ? WHERE status IN ('queued','running') AND updated_at < ?").run(msg, now(), cutoff);
+  await getDb().prepare("UPDATE critiques SET status = 'failed', error = ? WHERE status IN ('queued','running') AND created_at < ?").run(msg, cutoff);
 }
 
 /* ───────────────────────── AI usage ───────────────────────── */
 
-export function recordUsage(
+export async function recordUsage(
   userId: string,
   u: { operation: string; model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; costUsd: number; durationMs: number; status: string; error?: string | null },
 ) {
-  getDb()
+  await getDb()
     .prepare(
       `INSERT INTO ai_usage (id, user_id, operation, model, input_tokens, output_tokens, cache_read_tokens, cost_usd, duration_ms, status, error, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -848,15 +851,15 @@ export function recordUsage(
     .run(newId("use"), userId, u.operation, u.model, u.inputTokens, u.outputTokens, u.cacheReadTokens, u.costUsd, u.durationMs, u.status, u.error ?? null, now());
 }
 
-export function usageSummary(userId: string) {
-  const totals = getDb()
+export async function usageSummary(userId: string) {
+  const totals = await getDb()
     .prepare(
       `SELECT COUNT(*) AS calls, COALESCE(SUM(input_tokens),0) AS input_tokens, COALESCE(SUM(output_tokens),0) AS output_tokens,
         COALESCE(SUM(cost_usd),0) AS cost_usd, COALESCE(SUM(CASE WHEN status != 'ok' THEN 1 ELSE 0 END),0) AS failures
        FROM ai_usage WHERE user_id = ?`,
     )
     .get(userId) as Row;
-  const recent = getDb().prepare("SELECT * FROM ai_usage WHERE user_id = ? ORDER BY created_at DESC LIMIT 25").all(userId) as Row[];
+  const recent = await getDb().prepare("SELECT * FROM ai_usage WHERE user_id = ? ORDER BY created_at DESC LIMIT 25").all(userId) as Row[];
   return {
     calls: Number(totals.calls),
     inputTokens: Number(totals.input_tokens),
@@ -880,15 +883,15 @@ export function usageSummary(userId: string) {
 
 /* ───────────────────────── Preferences ───────────────────────── */
 
-export function getPreferences(userId: string): Preferences {
-  const r = getDb().prepare("SELECT value FROM settings WHERE user_id = ? AND key = 'preferences'").get(userId) as Row | undefined;
+export async function getPreferences(userId: string): Promise<Preferences> {
+  const r = await getDb().prepare("SELECT value FROM settings WHERE user_id = ? AND key = 'preferences'").get(userId) as Row | undefined;
   const stored = json<Partial<Preferences>>(r?.value, {});
   return { ...DEFAULT_PREFERENCES, ...stored, aiModels: { ...DEFAULT_PREFERENCES.aiModels, ...stored.aiModels } };
 }
 
-export function setPreferences(userId: string, patch: Partial<Preferences>): Preferences {
-  const next = { ...getPreferences(userId), ...patch };
-  getDb()
+export async function setPreferences(userId: string, patch: Partial<Preferences>): Promise<Preferences> {
+  const next = { ...await getPreferences(userId), ...patch };
+  await getDb()
     .prepare("INSERT INTO settings (user_id, key, value) VALUES (?, 'preferences', ?) ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value")
     .run(userId, JSON.stringify(next));
   return next;
@@ -906,23 +909,23 @@ const toChat = (r: Row): ChatMessage => ({
   createdAt: String(r.created_at),
 });
 
-export function addChatMessage(userId: string, m: { projectId: string; designId: string | null; role: ChatMessage["role"]; content: string; action?: ChatMessage["action"] }): ChatMessage {
-  getProject(userId, m.projectId);
+export async function addChatMessage(userId: string, m: { projectId: string; designId: string | null; role: ChatMessage["role"]; content: string; action?: ChatMessage["action"] }): Promise<ChatMessage> {
+  await getProject(userId, m.projectId);
   const id = newId("msg");
-  getDb()
+  await getDb()
     .prepare("INSERT INTO chat_messages (id, user_id, project_id, design_id, role, content, action, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
     .run(id, userId, m.projectId, m.designId, m.role, m.content, m.action ? JSON.stringify(m.action) : null, now());
-  return toChat(getDb().prepare("SELECT * FROM chat_messages WHERE id = ?").get(id) as Row);
+  return toChat(await getDb().prepare("SELECT * FROM chat_messages WHERE id = ?").get(id) as Row);
 }
 
-export function updateChatAction(userId: string, id: string, action: ChatMessage["action"]) {
-  getDb().prepare("UPDATE chat_messages SET action = ? WHERE id = ? AND user_id = ?").run(action ? JSON.stringify(action) : null, id, userId);
+export async function updateChatAction(userId: string, id: string, action: ChatMessage["action"]) {
+  await getDb().prepare("UPDATE chat_messages SET action = ? WHERE id = ? AND user_id = ?").run(action ? JSON.stringify(action) : null, id, userId);
 }
 
 /** Conversation for a project, optionally narrowed to one design (plus project-level messages). */
-export function listChatMessages(userId: string, projectId: string, designId: string | null, limit = 60): ChatMessage[] {
-  getProject(userId, projectId);
-  const rows = getDb()
+export async function listChatMessages(userId: string, projectId: string, designId: string | null, limit = 60): Promise<ChatMessage[]> {
+  await getProject(userId, projectId);
+  const rows = await getDb()
     .prepare(
       `SELECT * FROM (SELECT *, rowid AS seq FROM chat_messages WHERE user_id = ? AND project_id = ? AND (design_id IS ? OR design_id IS NULL)
        ORDER BY created_at DESC, seq DESC LIMIT ?) ORDER BY created_at ASC, seq ASC`,
