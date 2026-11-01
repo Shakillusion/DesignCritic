@@ -27,7 +27,7 @@ const BLURB: Record<ProviderId, string> = {
 };
 
 export function AiEnginePanel({ prefs, onChange }: { prefs: Preferences; onChange: (p: Preferences) => void }) {
-  const { data: status } = useFetch<{ ai: { providers: ProviderStatus[] } }>("/api/status");
+  const { data: status } = useFetch<{ ai: { providers: ProviderStatus[] }; hosted: boolean }>("/api/status");
   const providers = status?.ai.providers ?? [];
 
   return (
@@ -41,6 +41,7 @@ export function AiEnginePanel({ prefs, onChange }: { prefs: Preferences; onChang
           <ProviderCard
             key={p.id}
             p={p}
+            hosted={status?.hosted ?? false}
             selected={prefs.aiProvider === p.id}
             model={prefs.aiModels[p.id]}
             onSelect={() => onChange({ ...prefs, aiProvider: p.id })}
@@ -58,7 +59,7 @@ export function AiEnginePanel({ prefs, onChange }: { prefs: Preferences; onChang
   );
 }
 
-function ProviderCard({ p, selected, model, onSelect, onModel }: { p: ProviderStatus; selected: boolean; model: string; onSelect: () => void; onModel: (m: string) => void }) {
+function ProviderCard({ p, hosted, selected, model, onSelect, onModel }: { p: ProviderStatus; hosted: boolean; selected: boolean; model: string; onSelect: () => void; onModel: (m: string) => void }) {
   const { data } = useFetch<{ models: { id: string; label: string; vision: boolean }[]; auto: string | null }>(selected || p.configured ? `/api/ai/models?provider=${p.id}` : null);
   const [test, setTest] = useState<{ running: boolean; ok?: boolean; text?: string }>({ running: false });
 
@@ -112,7 +113,15 @@ function ProviderCard({ p, selected, model, onSelect, onModel }: { p: ProviderSt
           </>
         ) : (
           <p className="text-[12px] text-muted">
-            Add <code className="rounded bg-surface-2 px-1 font-mono text-[11.5px]">{p.keyEnv}</code> to <code className="rounded bg-surface-2 px-1 font-mono text-[11.5px]">.env.local</code> and restart.{" "}
+            {hosted ? (
+              <>
+                Add <code className="rounded bg-surface-2 px-1 font-mono text-[11.5px]">{p.keyEnv}</code> in Vercel → Settings → Environment Variables, then redeploy.{" "}
+              </>
+            ) : (
+              <>
+                Add <code className="rounded bg-surface-2 px-1 font-mono text-[11.5px]">{p.keyEnv}</code> to <code className="rounded bg-surface-2 px-1 font-mono text-[11.5px]">.env.local</code> and restart.{" "}
+              </>
+            )}
             <a href={p.signupUrl} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-0.5 font-medium text-accent hover:underline">
               Get a {p.free ? "free " : ""}key <ExternalLink className="size-3" />
             </a>

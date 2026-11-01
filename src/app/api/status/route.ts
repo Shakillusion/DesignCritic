@@ -36,6 +36,8 @@ export const GET = handle(async () => {
     },
     renderer,
     auth: { enabled: Boolean(accessPassword()) },
+    /** Hosted on Vercel: keys live in the project's environment variables, not .env.local. */
+    hosted: env.onVercel,
     assetProviders: providerStatus(),
     researchSources: [
       { id: "feeds", label: "Design publication feeds", configured: true, detail: `${(prefs.researchFeeds.length || DEFAULT_FEEDS.length)} feeds (free, no key)` },

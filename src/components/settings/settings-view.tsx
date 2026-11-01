@@ -22,6 +22,7 @@ interface Status {
   assetProviders: { id: string; label: string; configured: boolean; setupHint: string | null; kinds: string[] }[];
   planned: { id: string; label: string; detail: string }[];
   researchSources: { id: string; label: string; configured: boolean; detail: string }[];
+  hosted: boolean;
 }
 
 export function SettingsView() {
@@ -115,7 +116,7 @@ export function SettingsView() {
               <Skeleton className="h-40" />
             ) : (
               <ul className="space-y-3">
-                <StatusRow ok={status.ai.configured} label="AI engine" detail={status.ai.configured ? `${status.ai.activeLabel}${status.ai.activeFree ? " · free tier" : " · paid"}` : "Add a free GEMINI_API_KEY, GROQ_API_KEY or OPENROUTER_API_KEY to .env.local"} />
+                <StatusRow ok={status.ai.configured} label="AI engine" detail={status.ai.configured ? `${status.ai.activeLabel}${status.ai.activeFree ? " · free tier" : " · paid"}` : `Add a free GEMINI_API_KEY, GROQ_API_KEY or OPENROUTER_API_KEY ${status.hosted ? "in Vercel → Environment Variables" : "to .env.local"}`} />
                 <StatusRow ok={status.renderer.available} label="Renderer (headless browser)" detail={status.renderer.detail} />
                 {status.assetProviders.map((p) => (
                   <StatusRow key={p.id} ok={p.configured} label={p.label} detail={p.configured ? `${p.kinds.join(", ")}` : p.setupHint ?? "Not configured"} optional />
