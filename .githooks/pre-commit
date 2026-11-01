@@ -1,0 +1,27 @@
+#!/bin/sh
+# Refuses a commit that would add a secret: .env files (other than .env.example)
+# or anything that looks like an API key or token. Enabled with:
+#   git config core.hooksPath .githooks
+# In a genuine false positive, bypass once with: git commit --no-verify
+
+fail=0
+
+envfiles=$(git diff --cached --name-only --diff-filter=AM | grep -E '(^|/)\.env' | grep -v '\.env\.example$')
+if [ -n "$envfiles" ]; then
+  echo "Blocked: these files hold secrets and must never be committed:" >&2
+  echo "$envfiles" | sed 's/^/  /' >&2
+  echo "Unstage them with: git restore --staged <file>" >&2
+  fail=1
+fi
+
+# Added lines only; the key itself is never printed, just the file it is in.
+pattern='AIza[0-9A-Za-z_-]{30}|gsk_[A-Za-z0-9]{20}|sk-or-v1-[A-Za-z0-9]{20}|sk-ant-[A-Za-z0-9_-]{20}|tvly-[A-Za-z0-9]{10}|vercel_blob_rw_[A-Za-z0-9]{10}|ghp_[A-Za-z0-9]{20}|github_pat_[A-Za-z0-9_]{20}|eyJhbGci[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
+hits=$(git diff --cached -U0 --diff-filter=AM | awk '/^\+\+\+ b\//{f=substr($0,7)} /^\+[^+]/{print f"\t"$0}' | grep -E "$pattern" | cut -f1 | sort -u)
+if [ -n "$hits" ]; then
+  echo "Blocked: something that looks like an API key or token is being added in:" >&2
+  echo "$hits" | sed 's/^/  /' >&2
+  echo "Move it to .env.local (or Vercel's Environment Variables) and read it from process.env." >&2
+  fail=1
+fi
+
+exit $fail

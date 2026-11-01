@@ -92,6 +92,8 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Security notes
 
+- **Secrets:** API keys live only in `.env.local` (git-ignored) locally and in Vercel's Environment Variables when hosted. A pre-commit hook in `.githooks/` refuses commits that add `.env` files or anything shaped like an API key. Enable it once per clone with `git config core.hooksPath .githooks`. GitHub secret scanning and push protection are also on for the repo.
+
 - **Uploads:** checked by magic bytes, size-limited, fully decoded before they are accepted. SVGs containing scripts or event handlers are rejected.
 - **Serving files:** files are served with `nosniff` and a sandboxing CSP.
 - **External fetches:** every external fetch goes through `src/lib/net/safe-fetch.ts`. It blocks private and loopback networks at DNS-lookup time (which defends against DNS rebinding), re-validates every redirect, and enforces timeouts and byte limits.
